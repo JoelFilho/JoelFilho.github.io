@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  
+  
+  <title>The evolution of constexpr: compile-time lookup tables in C++ | Joel Filho</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+  <meta name="description" content="Lookup tables (LUTs) are an important resource for systems programming.  They are the embodiment of the time-space tradeoff: precomputing results allow faster computation, up to O(1)! My background: I">
+<meta property="og:type" content="article">
+<meta property="og:title" content="The evolution of constexpr: compile-time lookup tables in C++">
+<meta property="og:url" content="https://joelfilho.com/blog/2020/compile_time_lookup_tables_in_cpp/">
+<meta property="og:site_name" content="Joel Filho">
+<meta property="og:description" content="Lookup tables (LUTs) are an important resource for systems programming.  They are the embodiment of the time-space tradeoff: precomputing results allow faster computation, up to O(1)! My background: I">
+<meta property="og:locale" content="en_US">
+<meta property="article:published_time" content="2020-11-15T03:58:00.000Z">
+<meta property="article:author" content="Joel Filho">
+<meta property="article:tag" content="c++">
+<meta property="article:tag" content="compile-time">
+<meta property="article:tag" content="language-evolution">
+<meta name="twitter:card" content="summary">
+  
+    <link rel="alternate" href="/atom.xml" title="Joel Filho" type="application/atom+xml">
+  
+  
+    <link rel="shortcut icon" href="/favicon.png">
+  
+  
+    
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/typeface-source-code-pro@0.0.71/index.min.css">
+
+  
+  
+<link rel="stylesheet" href="/css/style.css">
+
+  
+    
+<link rel="stylesheet" href="/fancybox/jquery.fancybox.min.css">
+
+  
+<meta name="generator" content="Hexo 5.2.0"></head>
+
+<body>
+  <div id="container">
+    <div id="wrap">
+      <header id="header">
+  <div id="banner"></div>
+  <div id="header-outer" class="outer">
+    <div id="header-title" class="inner">
+      <h1 id="logo-wrap">
+        <a href="/" id="logo">Joel Filho</a>
+      </h1>
+      
+        <h2 id="subtitle-wrap">
+          <a href="/" id="subtitle">Modern C++ &amp; Embedded Systems</a>
+        </h2>
+      
+    </div>
+    <div id="header-inner" class="inner">
+      <nav id="main-nav">
+        <a id="main-nav-toggle" class="nav-icon"></a>
+        
+          <a class="main-nav-link" href="/">Home</a>
+        
+          <a class="main-nav-link" href="/archives">Archives</a>
+        
+          <a class="main-nav-link" target="_blank" rel="noopener" href="https://twitter.com/_JoelFilho">Twitter</a>
+        
+          <a class="main-nav-link" target="_blank" rel="noopener" href="https://github.com/JoelFilho">GitHub</a>
+        
+      </nav>
+      <nav id="sub-nav">
+        
+          <a id="nav-rss-link" class="nav-icon" href="/atom.xml" title="RSS Feed"></a>
+        
+        <a id="nav-search-btn" class="nav-icon" title="Search"></a>
+      </nav>
+      <div id="search-form-wrap">
+        <form action="//google.com/search" method="get" accept-charset="UTF-8" class="search-form"><input type="search" name="q" class="search-form-input" placeholder="Search"><button type="submit" class="search-form-submit">&#xF002;</button><input type="hidden" name="sitesearch" value="https://JoelFilho.com"></form>
+      </div>
+    </div>
+  </div>
+</header>
+
+      <div class="outer">
+        <section id="main"><article id="post-compile_time_lookup_tables_in_cpp" class="h-entry article article-type-post" itemprop="blogPost" itemscope itemtype="https://schema.org/BlogPosting">
+  <div class="article-meta">
+    <a href="/blog/2020/compile_time_lookup_tables_in_cpp/" class="article-date">
+  <time class="dt-published" datetime="2020-11-15T03:58:00.000Z" itemprop="datePublished">November 15, 2020</time>
+</a>
+    
+  </div>
+  <div class="article-inner">
+    
+    
+      <header class="article-header">
+        
+  
+    <h1 class="p-name article-title" itemprop="headline name">
+      The evolution of constexpr: compile-time lookup tables in C++
+    </h1>
+  
+
+      </header>
+    
+    <div class="e-content article-entry" itemprop="articleBody">
+      
+        <p>Lookup tables (LUTs) are an important resource for systems programming. 
+They are the embodiment of the time-space tradeoff: precomputing results allow faster computation, up to O(1)!</p>
+<p>My background: I’m a modern C++ enthusiast and a embedded systems developer. Recently, I had to implement two CRC tables, with different parameters. Instead of hard coding the tables, I went for my favorite kind of approach: computed at compile time. As the codebase was in C++11, it reminded me how far we’ve come.</p>
+<p>So, in this article, we’ll review how to implement compile-time lookup tables in C++, for every Standard C++ published so far: C++98, C++03, C++11, C++14, C++17 and C++20. We’ll focus on the evolution of <code>constexpr</code>, but we’ll also see important additions to the language, such as <code>auto</code> and library functionality.</p>
+<p><strong>Note</strong>: for this article, we’ll only consider features available on each Standard, even if some of the library features were possible to implement in previous versions of C++.</p>
+<!------------------------------------------------------------------------------------------------>
+<h2 id="c-98-03-the-dark-ages"><a name="c-98-03-the-dark-ages" href="#c-98-03-the-dark-ages" class="headerlink" title="Link to &quot;C++98/03: The Dark Ages&quot;">🔗</a>C++98/03: The Dark Ages</h2><p>Before modern C++, we did not have ways of compute constant expressions with the own language.</p>
+<p>All we had for this task was exactly what C has:</p>
+<a id="more"></a>
+
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// my_table.hpp</span></span><br><span class="line"><span class="keyword">extern</span> <span class="keyword">const</span> <span class="keyword">int</span> lut[<span class="number">16</span>];</span><br><span class="line"></span><br><span class="line"><span class="comment">// my_table.cpp</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&quot;my_table.h&quot;</span></span></span><br><span class="line"><span class="keyword">const</span> <span class="keyword">int</span> lut[<span class="number">16</span>] = &#123;<span class="number">1</span>,<span class="number">2</span>,<span class="number">3</span>, <span class="comment">/* ... */</span>, <span class="number">16</span>&#125;;</span><br></pre></td></tr></table></figure>
+
+<p>We declare a lookup table in our header. Due to how C++ linkage works, we need to use <code>extern</code> linkage and define the lookup table in a single translation unit (<code>my_table.cpp</code>).
+To use the table, all we need is to include the <code>my_table.hpp</code> file and invoke <code>lut[index]</code>.</p>
+<p>Alternatively, we can introduce a function for lookup and make the LUT an implementation detail:</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// my_table.hpp</span></span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">lookup</span><span class="params">(<span class="keyword">size_t</span> index)</span></span>;</span><br><span class="line"></span><br><span class="line"><span class="comment">// my_table.cpp</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&quot;my_table.h&quot;</span></span></span><br><span class="line"><span class="keyword">static</span> <span class="keyword">const</span> <span class="keyword">int</span> lut[<span class="number">16</span>] = &#123;<span class="number">1</span>,<span class="number">2</span>,<span class="number">3</span>, <span class="comment">/* ... */</span>, <span class="number">16</span>&#125;;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">lookup</span><span class="params">(<span class="keyword">size_t</span> index)</span></span>&#123;</span><br><span class="line">	assert(index &lt; <span class="number">16</span>); <span class="comment">// optional safety measure</span></span><br><span class="line">	<span class="keyword">return</span> lut[index];</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="how-do-we-compute-our-lookup-tables-in-c-98"><a name="how-do-we-compute-our-lookup-tables-in-c-98" href="#how-do-we-compute-our-lookup-tables-in-c-98" class="headerlink" title="Link to &quot;How do we compute our lookup tables in C++98?&quot;">🔗</a>How do we compute our lookup tables in C++98?</h3><p>One could adventure with the preprocessor, but the most common way is generating the <code>my_table.cpp</code> file with a scripting language.</p>
+<p>We can definitely do better than that!</p>
+<!------------------------------------------------------------------------------------------------>
+<h2 id="c-11-dawn-of-constexpr"><a name="c-11-dawn-of-constexpr" href="#c-11-dawn-of-constexpr" class="headerlink" title="Link to &quot;C++11: Dawn of constexpr&quot;">🔗</a>C++11: Dawn of <code>constexpr</code></h2><p>C++11 was such a huge improvement over the previous versions, it changed many paradigms in the language. <strong>Modern C++</strong> was born.</p>
+<h3 id="a-limited-constexpr"><a name="a-limited-constexpr" href="#a-limited-constexpr" class="headerlink" title="Link to &quot;A limited constexpr&quot;">🔗</a>A limited <code>constexpr</code></h3><p>The focus of our article is this beautiful inclusion to the language, so let’s start with it!</p>
+<p>Though its name isn’t the most elegant-sounding, the keyword perfectly describes what it’s supposed to do: allow definition of <em>constant expressions</em>.</p>
+<p>Now we can create type-safe constants, replacing macros:</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">constexpr</span> <span class="keyword">size_t</span> lut_size = <span class="number">99</span>;</span><br><span class="line"><span class="keyword">const</span> <span class="keyword">int</span> lut[lut_size] = &#123;...&#125;;</span><br></pre></td></tr></table></figure>
+
+<p>We can also create functions that can be evaluated at compile time:</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">constexpr</span> <span class="keyword">size_t</span> <span class="title">lut_size</span><span class="params">()</span></span>&#123;</span><br><span class="line">	<span class="keyword">return</span> <span class="number">99</span>;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="keyword">const</span> <span class="keyword">int</span> lut[lut_size()] = &#123;...&#125;;</span><br></pre></td></tr></table></figure>
+
+<p>With functions generating constant expressions, we have now a better way of computing anything at compile time. <code>constexpr</code> is Turing-complete!</p>
+<p>The main limitation with C++11’s <code>constexpr</code>, however, is that <strong>it only allows one return statement</strong>. No <code>if</code>‘s and <code>else</code>‘s, no variables. Only one return. So, we had a lot of recursive functions and ternary operators:</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">constexpr</span> <span class="keyword">unsigned</span> <span class="title">factorial</span><span class="params">(<span class="keyword">unsigned</span> n)</span></span>&#123;</span><br><span class="line">	<span class="keyword">return</span> (n &lt; <span class="number">2</span>) ? <span class="number">1</span> : (n * factorial(n<span class="number">-1</span>));</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="auto"><a name="auto" href="#auto" class="headerlink" title="Link to &quot;auto&quot;">🔗</a><code>auto</code></h3><p>C++ is a statically-type language. The compiler already knows the type of an expression. So why should we?</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">template</span>&lt;<span class="keyword">typename</span> T&gt;</span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">do_something</span><span class="params">(<span class="keyword">const</span> T&amp; t)</span></span>&#123;</span><br><span class="line">	<span class="comment">// We don&#x27;t know. We don&#x27;t care</span></span><br><span class="line">	<span class="keyword">auto</span> tmp = compute(t);</span><br><span class="line">	do_something_else(tmp);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>We can also have <code>auto</code> as our return type. The problem? It’s not deduced, and <strong>we still need a trailing return type</strong>:</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">auto do_something() -&gt; int &#123;</span><br><span class="line">	<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="decltype-and-std-declval"><a name="decltype-and-std-declval" href="#decltype-and-std-declval" class="headerlink" title="Link to &quot;decltype and std::declval&quot;">🔗</a><code>decltype</code> and <code>std::declval</code></h3><p>How do we deduce a return type of a generic function, when we cannot just declare it as <code>auto</code>? We can use <code>decltype</code> so the compiler can tell us:</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">template</span>&lt;<span class="keyword">typename</span> T1, <span class="keyword">typename</span> T2&gt;</span><br><span class="line">auto add(const T1&amp; a, const T1&amp; b) -&gt; decltype(a + b) &#123;</span><br><span class="line">	<span class="keyword">return</span> a + b;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>If we need a variable in <code>decltype</code> that we don’t have declared, we can use <a target="_blank" rel="noopener" href="https://en.cppreference.com/w/cpp/utility/declval">the <code>std::declval</code> utility</a>, to pretend we have one:</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">using</span> other_type = <span class="comment">/* a mystery */</span>;</span><br><span class="line"></span><br><span class="line"><span class="keyword">template</span>&lt;<span class="keyword">typename</span> F&gt;</span><br><span class="line">auto call(F&amp;&amp; f) -&gt; decltype(f(std::declval&lt;other_type&gt;()))&#123;</span><br><span class="line">	other_type t &#123; <span class="comment">/*...*/</span> &#125;;</span><br><span class="line">	<span class="keyword">return</span> f(t);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="std-array"><a name="std-array" href="#std-array" class="headerlink" title="Link to &quot;std::array&quot;">🔗</a><code>std::array</code></h3><p>One issue with C-style arrays is that we cannot return them from functions. They decay to pointers, which then dangle.</p>
+<p>C++11 introduced <a target="_blank" rel="noopener" href="https://en.cppreference.com/w/cpp/container/array"><code>std::array</code></a>, a statically-sized container, which solves this issue:</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// Returning an array of 10 items</span></span><br><span class="line">std::array&lt;int, 10&gt; create_arrray()&#123;</span><br><span class="line">	<span class="built_in">std</span>::<span class="built_in">array</span>&lt;<span class="keyword">int</span>, 10&gt; arr;</span><br><span class="line">	<span class="comment">// do something with arr</span></span><br><span class="line">	<span class="keyword">return</span> arr;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="variadic-templates"><a name="variadic-templates" href="#variadic-templates" class="headerlink" title="Link to &quot;Variadic templates&quot;">🔗</a>Variadic templates</h3><p>The missing piece of our puzzle: we can now have templates with any amount of template parameters, using parameter packs!</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">template</span>&lt;<span class="keyword">typename</span>... Args&gt;</span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">do_something</span><span class="params">(Args&amp;&amp;... args)</span></span>&#123;</span><br><span class="line">	<span class="comment">// Do something with args. To individually address arguments, use recursion.</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>(If you’re confused by the <code>Args&amp;&amp;</code> nomenclature, check my previous article: <a href="/blog/2020/forwarding_references/" title="Forwarding References and Perfect Forwarding in C++">Forwarding References and Perfect Forwarding in C++</a>)</p>
+<h3 id="compile-time-lut-in-c-11"><a name="compile-time-lut-in-c-11" href="#compile-time-lut-in-c-11" class="headerlink" title="Link to &quot;Compile-time LUT in C++11&quot;">🔗</a>Compile-time LUT in C++11</h3><p>We all know all the features we needed to create this, so let’s do it:</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// Implementation of the LUT, using a recursive function</span></span><br><span class="line"><span class="comment">// We use SFINAE to end recursion</span></span><br><span class="line"></span><br><span class="line"><span class="comment">// The final iteration: we construct the array</span></span><br><span class="line"><span class="keyword">template</span>&lt;<span class="built_in">std</span>::<span class="keyword">size_t</span> Length, <span class="keyword">typename</span> T, <span class="keyword">typename</span> Generator, <span class="keyword">typename</span>... Values&gt;</span><br><span class="line"><span class="function"><span class="keyword">constexpr</span> <span class="keyword">auto</span> <span class="title">lut_impl</span><span class="params">(Generator&amp;&amp; f, Values... values)</span></span></span><br><span class="line">  -&gt; typename std::enable_if&lt;sizeof...(Values) == (Length - 1),  std::array&lt;T, Length&gt;&gt;::type</span><br><span class="line">&#123;</span><br><span class="line">    <span class="keyword">return</span> &#123;values..., <span class="built_in">std</span>::forward&lt;Generator&gt;(f)(<span class="keyword">sizeof</span>...(Values))&#125;;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">// All other iterations: we append the values to </span></span><br><span class="line"><span class="keyword">template</span>&lt;<span class="built_in">std</span>::<span class="keyword">size_t</span> Length, <span class="keyword">typename</span> T, <span class="keyword">typename</span> Generator, <span class="keyword">typename</span>... Values&gt;</span><br><span class="line"><span class="function"><span class="keyword">constexpr</span> <span class="keyword">auto</span> <span class="title">lut_impl</span><span class="params">(Generator&amp;&amp; f, Values... values)</span></span></span><br><span class="line">  -&gt; typename std::enable_if&lt;sizeof...(Values) &lt; (Length - 1),  std::array&lt;T, Length&gt;&gt;::type</span><br><span class="line">&#123;</span><br><span class="line">    <span class="keyword">return</span> lut_impl&lt;Length, T, Generator, Values..., <span class="keyword">decltype</span>(f(<span class="built_in">std</span>::<span class="keyword">size_t</span>&#123;<span class="number">0</span>&#125;))&gt;</span><br><span class="line">                                                    (<span class="built_in">std</span>::forward&lt;Generator&gt;(f),</span><br><span class="line">                                                     values...,</span><br><span class="line">                                                     f(<span class="keyword">sizeof</span>...(Values)));</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">// Our lookup table function</span></span><br><span class="line"><span class="comment">//  - Length: the size of our LUT</span></span><br><span class="line"><span class="comment">//  - Generator: the functor that we&#x27;ll call to generate the LUT on each index</span></span><br><span class="line"><span class="comment">//  - As we&#x27;re using indexes, we don&#x27;t need to call std::declval and can just declare a value of size_t</span></span><br><span class="line"><span class="keyword">template</span>&lt;<span class="built_in">std</span>::<span class="keyword">size_t</span> Length, <span class="keyword">typename</span> Generator&gt;</span><br><span class="line">constexpr auto lut(Generator&amp;&amp; f) -&gt; std::array&lt;decltype(f(std::size_t&#123;0&#125;)), Length&gt; &#123;</span><br><span class="line">    <span class="comment">// We call the implementation</span></span><br><span class="line">    <span class="keyword">return</span> lut_impl&lt;Length, <span class="comment">// The size</span></span><br><span class="line">                    <span class="keyword">decltype</span>(f(<span class="built_in">std</span>::<span class="keyword">size_t</span>&#123;<span class="number">0</span>&#125;)) <span class="comment">// The return type</span></span><br><span class="line">                   &gt;(<span class="built_in">std</span>::forward&lt;Generator&gt;(f));</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>If you found this unreadable and extremely confusing, remember to thank your library implementers.
+<strong>They do this kind of work so you don’t have to!</strong> All you have to do is use the library, which is definitely easier.</p>
+<p><strong>Explanation</strong>:</p>
+<ul>
+<li>As we can only have a return type on C++11, we cannot just create the array in our function. So, we created a recursive helper function, to hold all our values until we construct the array.</li>
+<li>We need to deduce the return type in each function. As we know it’s an array and its length, we can return <code>std::array&lt;decltype(f(std::size_t&#123;0&#125;)), Length&gt;</code>.</li>
+</ul>
+<p><strong>Usage</strong>:</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// We already implemented factorial above, so let&#x27;s use it!</span></span><br><span class="line"><span class="function"><span class="keyword">unsigned</span> <span class="title">precomputed_factorial</span><span class="params">(<span class="keyword">unsigned</span> n)</span></span>&#123;</span><br><span class="line">	<span class="keyword">constexpr</span> <span class="keyword">auto</span> lut = lut&lt;<span class="number">10</span>&gt;(factorial);</span><br><span class="line">	<span class="keyword">return</span> lut[n];</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><a target="_blank" rel="noopener" href="https://godbolt.org/z/MGzW33">Try it out on Compiler Explorer</a>!</p>
+<p><strong>Limitations</strong>:</p>
+<ul>
+<li>With <code>std::array</code>, we cannot legally access the data at compile time. So, lookup is only done at runtime.</li>
+</ul>
+<!------------------------------------------------------------------------------------------------>
+<h2 id="c-14-constexpr-rises"><a name="c-14-constexpr-rises" href="#c-14-constexpr-rises" class="headerlink" title="Link to &quot;C++14: constexpr rises&quot;">🔗</a>C++14: <code>constexpr</code> rises</h2><p>After a decade working on C++11, the committee decided taking a different approach: <strong>standards will be released in a 3-year cycle</strong>. This way, we don’t wait for the completion of some features, while many are complete and ready to be used.</p>
+<p>C++14 was the first standard released this way, and mostly consisted of C++11 bug fixes.</p>
+<h3 id="down-with-the-annoying-constexpr-limitation"><a name="down-with-the-annoying-constexpr-limitation" href="#down-with-the-annoying-constexpr-limitation" class="headerlink" title="Link to &quot;Down with the annoying constexpr limitation!&quot;">🔗</a>Down with the annoying <code>constexpr</code> limitation!</h3><p><code>constexpr</code> was a success. What the committee didn’t expect was how successful it would become.</p>
+<p>The initial thought was “let’s replace macros with one-liners”. What actually happened? Compile-time programming became a staple of the language, a symbol of the zero-overhead principle.</p>
+<p>Now, we can have multiple lines in a single <code>constexpr</code> function!</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">constexpr</span> <span class="keyword">unsigned</span> <span class="title">factorial</span><span class="params">(<span class="keyword">unsigned</span> n)</span></span>&#123;</span><br><span class="line">	<span class="keyword">unsigned</span> result = <span class="number">1</span>;</span><br><span class="line">	<span class="keyword">for</span>(<span class="keyword">unsigned</span> i = <span class="number">2</span>; i &lt;= n; i++)&#123;</span><br><span class="line">		result *= i;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="keyword">return</span> result;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>Now, we can just build an <code>std::array</code> and… <strong>Oh, no!</strong> They forgot to make <code>std::array</code>‘s operators <code>constexpr</code>!</p>
+<p>We could implement our own <code>constexpr notstd::array</code>, but, as the initial disclaimer, we’ll only use standard features. So, let’s see another addition to C++14.</p>
+<h2 id="std-integer-sequence-and-std-index-sequence"><a name="std-integer-sequence-and-std-index-sequence" href="#std-integer-sequence-and-std-index-sequence" class="headerlink" title="Link to &quot;std::integer_sequence and std::index_sequence&quot;">🔗</a><code>std::integer_sequence</code> and <code>std::index_sequence</code></h2><p><a target="_blank" rel="noopener" href="https://en.cppreference.com/w/cpp/utility/integer_sequence"><code>std::integer_sequence</code> and <code>std::index_sequence</code></a> are template utilities for creating sequences and accessing multiple indexes as pack expansions.</p>
+<h2 id="a-better-auto"><a name="a-better-auto" href="#a-better-auto" class="headerlink" title="Link to &quot;A better auto&quot;">🔗</a>A better <code>auto</code></h2><p>Now, the compiler can deduce the return type of our functions. No more trailing <code>decltype</code>!</p>
+<p>Using our C++11 example, we now can remove our ugly <code>decltype</code> expression:</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">using</span> other_type = <span class="comment">/* a mystery */</span>;</span><br><span class="line"></span><br><span class="line"><span class="keyword">template</span>&lt;<span class="keyword">typename</span> F&gt;</span><br><span class="line"><span class="function"><span class="keyword">auto</span> <span class="title">call</span><span class="params">(F&amp;&amp; f)</span> </span>&#123;</span><br><span class="line">	other_type t &#123; <span class="comment">/*...*/</span> &#125;;</span><br><span class="line">	<span class="keyword">return</span> f(t);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><strong>Note</strong>: <code>auto</code> implies returning a value. In order to return whichever type <code>f</code> returns, including references, we must define our return type <code>decltype(auto)</code>.</p>
+<h3 id="compile-time-lut-in-c-14"><a name="compile-time-lut-in-c-14" href="#compile-time-lut-in-c-14" class="headerlink" title="Link to &quot;Compile-time LUT in C++14&quot;">🔗</a>Compile-time LUT in C++14</h3><p>At the end, we have slightly more readable code:</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// Implementation of the LUT, in one shot!</span></span><br><span class="line"><span class="keyword">template</span>&lt;<span class="built_in">std</span>::<span class="keyword">size_t</span> Length, <span class="keyword">typename</span> Generator, <span class="built_in">std</span>::<span class="keyword">size_t</span>... Indexes&gt;</span><br><span class="line"><span class="function"><span class="keyword">constexpr</span> <span class="keyword">auto</span> <span class="title">lut_impl</span><span class="params">(Generator&amp;&amp; f, <span class="built_in">std</span>::index_sequence&lt;Indexes...&gt;)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">using</span> content_type = <span class="keyword">decltype</span>(f(<span class="built_in">std</span>::<span class="keyword">size_t</span>&#123;<span class="number">0</span>&#125;));</span><br><span class="line">    <span class="keyword">return</span> <span class="built_in">std</span>::<span class="built_in">array</span>&lt;content_type, Length&gt; &#123;&#123; f(Indexes)... &#125;&#125;;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">// Our lookup table function</span></span><br><span class="line"><span class="keyword">template</span>&lt;<span class="built_in">std</span>::<span class="keyword">size_t</span> Length, <span class="keyword">typename</span> Generator&gt;</span><br><span class="line"><span class="function"><span class="keyword">constexpr</span> <span class="keyword">auto</span> <span class="title">lut</span><span class="params">(Generator&amp;&amp; f)</span></span>&#123;</span><br><span class="line">    <span class="keyword">return</span> lut_impl&lt;Length&gt;(<span class="built_in">std</span>::forward&lt;Generator&gt;(f), <span class="built_in">std</span>::make_index_sequence&lt;Length&gt;&#123;&#125;);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><a target="_blank" rel="noopener" href="https://godbolt.org/z/TGzG4K">Try it out on Compiler Explorer</a>!</p>
+<p><strong>Details</strong>:</p>
+<ul>
+<li>It is possible to <a target="_blank" rel="noopener" href="https://github.com/JoelFilho/JTC/blob/master/include/jtc/templates/integer_sequence.hpp">implement <code>std::index_sequence</code> on C++11</a>. The <code>decltype</code> trailing return types are still required there, though.</li>
+<li>Like on C++11, lookup can still only be done at runtime.</li>
+</ul>
+<h2 id="variable-templates"><a name="variable-templates" href="#variable-templates" class="headerlink" title="Link to &quot;Variable templates&quot;">🔗</a>Variable templates</h2><p>C++14 introduced <a target="_blank" rel="noopener" href="https://en.cppreference.com/w/cpp/language/variable_template">variable templates</a>. We now can declare our LUTs as any size, and use them as normal variables (<a target="_blank" rel="noopener" href="https://godbolt.org/z/eGqb84">See in Compiler Explorer</a>):</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">template</span>&lt;<span class="built_in">std</span>::<span class="keyword">size_t</span> Length&gt;</span><br><span class="line"><span class="keyword">constexpr</span> <span class="keyword">auto</span> factorial_lut = lut&lt;Length&gt;(factorial);</span><br><span class="line"></span><br><span class="line"><span class="comment">// Function is now unnecessary!</span></span><br><span class="line"><span class="function"><span class="keyword">unsigned</span> <span class="title">precomputed_factorial</span><span class="params">(<span class="keyword">unsigned</span> n)</span></span>&#123;</span><br><span class="line">	<span class="keyword">return</span> factorial_lut&lt;<span class="number">10</span>&gt;[n];</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><strong>Note</strong>: Only after C++17, we can declare our variable as <code>inline</code>. We may have some problems with linkage, as we need to take the address of a global variable inside our LUT. Multiple <code>static</code> variables may increase binary size, and not using static linkage may result in duplicate symbols.</p>
+<!------------------------------------------------------------------------------------------------>
+<h2 id="c-17-constexpr-shines"><a name="c-17-constexpr-shines" href="#c-17-constexpr-shines" class="headerlink" title="Link to &quot;C++17: constexpr shines&quot;">🔗</a>C++17: <code>constexpr</code> shines</h2><h3 id="a-fully-constexpr-std-array"><a name="a-fully-constexpr-std-array" href="#a-fully-constexpr-std-array" class="headerlink" title="Link to &quot;A fully constexpr std::array&quot;">🔗</a>A fully <code>constexpr</code> <code>std::array</code></h3><p>The committee finally added <code>constexpr</code> to <code>std::array</code>‘s iterators and <code>operator[]</code>. We can now iteratively construct an <code>std::array</code>:</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">constexpr</span> <span class="keyword">auto</span> <span class="title">random_array</span><span class="params">()</span></span>&#123;</span><br><span class="line">	<span class="built_in">std</span>::<span class="built_in">array</span>&lt;<span class="keyword">int</span>, 10&gt; arr;</span><br><span class="line">	<span class="keyword">for</span>(<span class="keyword">auto</span>&amp; itm : arr)&#123;</span><br><span class="line">		itm = random_func();</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="keyword">return</span> arr;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="compile-time-lut-in-c-17"><a name="compile-time-lut-in-c-17" href="#compile-time-lut-in-c-17" class="headerlink" title="Link to &quot;Compile-time LUT in C++17&quot;">🔗</a>Compile-time LUT in C++17</h3><p>We can now go down to a single function!</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">template</span>&lt;<span class="built_in">std</span>::<span class="keyword">size_t</span> Length, <span class="keyword">typename</span> Generator&gt;</span><br><span class="line"><span class="function"><span class="keyword">constexpr</span> <span class="keyword">auto</span> <span class="title">lut</span><span class="params">(Generator&amp;&amp; f)</span></span>&#123;</span><br><span class="line">    <span class="keyword">using</span> content_type = <span class="keyword">decltype</span>(f(<span class="built_in">std</span>::<span class="keyword">size_t</span>&#123;<span class="number">0</span>&#125;));</span><br><span class="line">    <span class="built_in">std</span>::<span class="built_in">array</span>&lt;content_type, Length&gt; arr &#123;&#125;;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">for</span>(<span class="built_in">std</span>::<span class="keyword">size_t</span> i = <span class="number">0</span>; i &lt; Length; i++)&#123;</span><br><span class="line">        arr[i] = f(i);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">return</span> arr;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><a target="_blank" rel="noopener" href="https://godbolt.org/z/T14MrK">Try it out on Compiler Explorer</a>!</p>
+<p><strong>Note</strong>: This considers the result of <code>f</code> is default and copy constructible. Otherwise, we need to use the <code>index_sequence</code> version.</p>
+<h3 id="constexpr-lambdas"><a name="constexpr-lambdas" href="#constexpr-lambdas" class="headerlink" title="Link to &quot;constexpr lambdas&quot;">🔗</a><code>constexpr</code> lambdas</h3><p>Lambda expressions in C++17 now can be declared <code>constexpr</code>, to indicate its <code>operator()</code> can be called at compile time. It can also just infer <code>constexpr</code> from it. </p>
+<p>With lambdas and <code>inline</code> variable templates, we can now declare our LUT in a single statement:</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">template</span>&lt;<span class="built_in">std</span>::<span class="keyword">size_t</span> Length&gt;</span><br><span class="line"><span class="keyword">inline</span> <span class="keyword">constexpr</span> <span class="keyword">auto</span> factorial_lut = lut&lt;Length&gt;([](<span class="built_in">std</span>::<span class="keyword">size_t</span> n)&#123;</span><br><span class="line">    <span class="keyword">unsigned</span> result = <span class="number">1</span>;</span><br><span class="line">	<span class="keyword">for</span>(<span class="keyword">unsigned</span> i = <span class="number">2</span>; i &lt;= n; i++)&#123;</span><br><span class="line">		result *= i;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="keyword">return</span> result;</span><br><span class="line">&#125;);</span><br></pre></td></tr></table></figure>
+
+<!------------------------------------------------------------------------------------------------>
+<h2 id="c-20-constexpr-unleashed"><a name="c-20-constexpr-unleashed" href="#c-20-constexpr-unleashed" class="headerlink" title="Link to &quot;C++20: constexpr unleashed&quot;">🔗</a>C++20: <code>constexpr</code> unleashed</h2><p>C++20 brings the biggest upgrades in C++ since C++11. However, we’ll just use a couple of features.</p>
+<h3 id="constexpr-algorithms-and-ranges"><a name="constexpr-algorithms-and-ranges" href="#constexpr-algorithms-and-ranges" class="headerlink" title="Link to &quot;constexpr algorithms and ranges&quot;">🔗</a><code>constexpr</code> algorithms and ranges</h3><p>In his classic <a target="_blank" rel="noopener" href="https://channel9.msdn.com/Events/GoingNative/2013/Cpp-Seasoning">C++ Seasoning talk</a>, Sean Parent introduced us to the concept of “no raw loops”.</p>
+<p>So, as good listeners, let’s use the fact that C++20 introduces <code>constexpr</code> to the functions on the <code>&lt;algorithm&gt;</code> header!</p>
+<p>C++20 also introduced <a target="_blank" rel="noopener" href="https://en.cppreference.com/w/cpp/ranges">the ranges library</a>. It’s enormous, and changes the way we think about algorithms in C++. We’ll use them, rather than the usual algorithm functions.</p>
+<h3 id="compile-time-lut-in-c-20-feat-ranges"><a name="compile-time-lut-in-c-20-feat-ranges" href="#compile-time-lut-in-c-20-feat-ranges" class="headerlink" title="Link to &quot;Compile-time LUT in C++20, feat. ranges&quot;">🔗</a>Compile-time LUT in C++20, feat. ranges</h3><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">template</span>&lt;<span class="built_in">std</span>::<span class="keyword">size_t</span> Length, <span class="keyword">typename</span> Generator&gt;</span><br><span class="line"><span class="function"><span class="keyword">constexpr</span> <span class="keyword">auto</span> <span class="title">lut</span><span class="params">(Generator&amp;&amp; f)</span></span>&#123;</span><br><span class="line">    <span class="keyword">using</span> content_type = <span class="keyword">decltype</span>(f(<span class="built_in">std</span>::<span class="keyword">size_t</span>&#123;<span class="number">0</span>&#125;));</span><br><span class="line">    <span class="built_in">std</span>::<span class="built_in">array</span>&lt;content_type, Length&gt; arr;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">using</span> <span class="keyword">namespace</span> <span class="built_in">std</span>::ranges;</span><br><span class="line">    <span class="keyword">auto</span> content = views::iota(<span class="built_in">std</span>::<span class="keyword">size_t</span>&#123;<span class="number">0</span>&#125;, Length) <span class="comment">// Generate a sequence</span></span><br><span class="line">                 | views::transform(<span class="built_in">std</span>::forward&lt;Generator&gt;(f)); <span class="comment">// Transform using our generator</span></span><br><span class="line">    copy(content, arr.begin());</span><br><span class="line"></span><br><span class="line">    <span class="keyword">return</span> arr;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><a target="_blank" rel="noopener" href="https://godbolt.org/z/qKhcc7">Try it out on Compiler Explorer</a>!</p>
+<p>Okay, that isn’t easier to read than C++17’s. (No, using <code>std::ranges::transform</code> won’t make it more readable.)</p>
+<p>But that’s the beauty: C++ is a backwards-compatible language, that one still works!
+And the language is highly complex, so this minimal example won’t be fair to the feature. Listen to Sean Parent, use algorithms.</p>
+<!------------------------------------------------------------------------------------------------>
+<h2 id="what-about-the-future"><a name="what-about-the-future" href="#what-about-the-future" class="headerlink" title="Link to &quot;What about the future?&quot;">🔗</a>What about the future?</h2><p>We saw C++20 added ranges. Sadly, they didn’t introduce adapters to generate our data types. Hopefully, in the future, we can do something like this:</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">template</span>&lt;<span class="built_in">std</span>::<span class="keyword">size_t</span> Length, <span class="keyword">typename</span> Generator&gt;</span><br><span class="line"><span class="function"><span class="keyword">constexpr</span> <span class="keyword">auto</span> <span class="title">lut</span><span class="params">(Generator&amp;&amp; f)</span></span>&#123;</span><br><span class="line">	<span class="keyword">using</span> <span class="keyword">namespace</span> <span class="built_in">std</span>::ranges;</span><br><span class="line">    <span class="keyword">return</span> views::iota(<span class="number">0u</span>z, Length) |&gt; views::transform(f) |&gt; to_array();</span><br><span class="line">	<span class="comment">// to_array doesn&#x27;t exist. It may not work with our current language features</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><strong>Notes</strong>: </p>
+<ul>
+<li><a target="_blank" rel="noopener" href="https://wg21.link/P0330">P0330</a>: <code>uz</code> is the newly approved suffix for <code>size_t</code> literals!</li>
+<li><a target="_blank" rel="noopener" href="https://wg21.link/P2011">P2011</a>: The “pizza operator” <code>|&gt;</code> is a solution proposed for an unwanted overhead of ranges</li>
+<li><a target="_blank" rel="noopener" href="https://wg21.link/p1206">P1206</a>: “<code>ranges::to</code>: A function to convert any range to a container”. It says “Future work is needed to allow constructing <code>std::array</code>“</li>
+</ul>
+<!------------------------------------------------------------------------------------------------>
+<h2 id="conclusion"><a name="conclusion" href="#conclusion" class="headerlink" title="Link to &quot;Conclusion&quot;">🔗</a>Conclusion</h2><p>Only by looking back, we can see how far we’ve come. With <code>constexpr</code>, it’s no different.</p>
+<p>For our application, we found a balance. We can now generate lookup tables beautifully in our language, without depending on other languages, and at no runtime cost!</p>
+<p>At the end, I still don’t like that we cannot use the C++17/C++20 versions for types that are not default constructible. We still need to use the C++14 version for those types, maybe only adding CTAD.</p>
+<p>Perhaps a <code>to_array</code> adapter will work someday. I tried implementing it with my small knowledge of ranges, but I believe it may need <a target="_blank" rel="noopener" href="https://wg21.link/P1045">P1045</a>, so we can deduce the array length from a function input. Until then, we’ll keep using what we can.</p>
+<p>If you came so far, thanks for reading! I have DMs open <a target="_blank" rel="noopener" href="https://twitter.com/_JoelFilho">on twitter</a>, and <a target="_blank" rel="noopener" href="https://www.reddit.com/user/JoelFilho/">on Reddit</a>. Any questions or comments, just let me know!</p>
+<p>The larger code snippets from this post are released under the Boost License, on my <a target="_blank" rel="noopener" href="https://github.com/JoelFilho/blog_samples/tree/main/compile_time_lookup_tables">snippets repository</a>.</p>
+
+      
+    </div>
+    <footer class="article-footer">
+      <a data-url="https://joelfilho.com/blog/2020/compile_time_lookup_tables_in_cpp/" data-id="ckhijrwxh0000rsfh2l155zrt" data-title="The evolution of constexpr: compile-time lookup tables in C++" class="article-share-link">Share</a>
+      
+      
+      
+  <ul class="article-tag-list" itemprop="keywords"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/c/" rel="tag">c++</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/compile-time/" rel="tag">compile-time</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/language-evolution/" rel="tag">language-evolution</a></li></ul>
+
+    </footer>
+  </div>
+  
+    
+<nav id="article-nav">
+  
+  
+    <a href="/blog/2020/forwarding_references/" id="article-nav-older" class="article-nav-link-wrap">
+      <strong class="article-nav-caption">Older</strong>
+      <div class="article-nav-title">Forwarding References? Forwardable References! (or: don&#39;t use std::forward just because you can)</div>
+    </a>
+  
+</nav>
+
+  
+</article>
+
+
+</section>
+        
+          <aside id="sidebar">
+  
+    
+  <div class="widget-wrap">
+    <h3 class="widget-title">Tags</h3>
+    <div class="widget">
+      <ul class="tag-list" itemprop="keywords"><li class="tag-list-item"><a class="tag-list-link" href="/tags/c/" rel="tag">c++</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/compile-time/" rel="tag">compile-time</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/language-evolution/" rel="tag">language-evolution</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/language-tips/" rel="tag">language-tips</a></li></ul>
+    </div>
+  </div>
+
+
+  
+    
+  <div class="widget-wrap">
+    <h3 class="widget-title">Recent Posts</h3>
+    <div class="widget">
+      <ul>
+        
+          <li>
+            <a href="/blog/2020/compile_time_lookup_tables_in_cpp/">The evolution of constexpr: compile-time lookup tables in C++</a>
+          </li>
+        
+          <li>
+            <a href="/blog/2020/forwarding_references/">Forwarding References? Forwardable References! (or: don&#39;t use std::forward just because you can)</a>
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+
+  
+</aside>
+        
+      </div>
+      <footer id="footer">
+  
+  <div class="outer">
+    <div id="footer-info" class="inner">
+      
+      &copy; 2020 Joel Filho<br>
+      Powered by <a href="https://hexo.io/" target="_blank">Hexo</a>
+    </div>
+  </div>
+</footer>
+
+    </div>
+    <nav id="mobile-nav">
+  
+    <a href="/" class="mobile-nav-link">Home</a>
+  
+    <a href="/archives" class="mobile-nav-link">Archives</a>
+  
+    <a target="_blank" rel="noopener" href="https://twitter.com/_JoelFilho" class="mobile-nav-link">Twitter</a>
+  
+    <a target="_blank" rel="noopener" href="https://github.com/JoelFilho" class="mobile-nav-link">GitHub</a>
+  
+</nav>
+    
+
+
+<script src="/js/jquery-3.4.1.min.js"></script>
+
+
+
+  
+<script src="/fancybox/jquery.fancybox.min.js"></script>
+
+
+
+
+<script src="/js/script.js"></script>
+
+
+
+
+
+  </div>
+</body>
+</html>

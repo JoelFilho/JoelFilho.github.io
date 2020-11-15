@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Joel Filho</title>
+  
+  <subtitle>Modern C++ &amp; Embedded Systems</subtitle>
+  <link href="https://joelfilho.com/atom.xml" rel="self"/>
+  
+  <link href="https://joelfilho.com/"/>
+  <updated>2020-11-15T03:58:00.000Z</updated>
+  <id>https://joelfilho.com/</id>
+  
+  <author>
+    <name>Joel Filho</name>
+    
+  </author>
+  
+  <generator uri="https://hexo.io/">Hexo</generator>
+  
+  <entry>
+    <title>The evolution of constexpr: compile-time lookup tables in C++</title>
+    <link href="https://joelfilho.com/blog/2020/compile_time_lookup_tables_in_cpp/"/>
+    <id>https://joelfilho.com/blog/2020/compile_time_lookup_tables_in_cpp/</id>
+    <published>2020-11-15T03:58:00.000Z</published>
+    <updated>2020-11-15T03:58:00.000Z</updated>
+    
+    
+    <summary type="html">&lt;p&gt;Lookup tables (LUTs) are an important resource for systems programming. 
+They are the embodiment of the time-space tradeoff: precomputing results allow faster computation, up to O(1)!&lt;/p&gt;
+&lt;p&gt;My background: I’m a modern C++ enthusiast and a embedded systems developer. Recently, I had to implement two CRC tables, with different parameters. Instead of hard coding the tables, I went for my favorite kind of approach: computed at compile time. As the codebase was in C++11, it reminded me how far we’ve come.&lt;/p&gt;
+&lt;p&gt;So, in this article, we’ll review how to implement compile-time lookup tables in C++, for every Standard C++ published so far: C++98, C++03, C++11, C++14, C++17 and C++20. We’ll focus on the evolution of &lt;code&gt;constexpr&lt;/code&gt;, but we’ll also see important additions to the language, such as &lt;code&gt;auto&lt;/code&gt; and library functionality.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;Note&lt;/strong&gt;: for this article, we’ll only consider features available on each Standard, even if some of the library features were possible to implement in previous versions of C++.&lt;/p&gt;
+&lt;!------------------------------------------------------------------------------------------------&gt;
+&lt;h2 id=&quot;c-98-03-the-dark-ages&quot;&gt;&lt;a name=&quot;c-98-03-the-dark-ages&quot; href=&quot;#c-98-03-the-dark-ages&quot; class=&quot;headerlink&quot; title=&quot;Link to &amp;quot;C++98/03: The Dark Ages&amp;quot;&quot;&gt;🔗&lt;/a&gt;C++98/03: The Dark Ages&lt;/h2&gt;&lt;p&gt;Before modern C++, we did not have ways of compute constant expressions with the own language.&lt;/p&gt;
+&lt;p&gt;All we had for this task was exactly what C has:&lt;/p&gt;</summary>
+    
+    
+    
+    
+    <category term="c++" scheme="https://joelfilho.com/tags/c/"/>
+    
+    <category term="compile-time" scheme="https://joelfilho.com/tags/compile-time/"/>
+    
+    <category term="language-evolution" scheme="https://joelfilho.com/tags/language-evolution/"/>
+    
+  </entry>
+  
+  <entry>
+    <title>Forwarding References? Forwardable References! (or: don&#39;t use std::forward just because you can)</title>
+    <link href="https://joelfilho.com/blog/2020/forwarding_references/"/>
+    <id>https://joelfilho.com/blog/2020/forwarding_references/</id>
+    <published>2020-11-12T07:26:40.000Z</published>
+    <updated>2020-11-12T07:26:40.000Z</updated>
+    
+    
+    <summary type="html">&lt;p&gt;Forwarding references are a somewhat controversial topic, starting from their name.
+When working with them, we’ve been taught to use &lt;code&gt;std::forward&lt;/code&gt;. After all, it’s in their name!&lt;/p&gt;
+&lt;p&gt;In this article, we’ll see when using &lt;code&gt;std::forward&lt;/code&gt; is not only detrimental, it’s plain wrong.&lt;/p&gt;
+&lt;p&gt;If you’re &lt;em&gt;already&lt;/em&gt; tired of reading introductions on rvalue references, move semantics and perfect forwarding, &lt;a href=&quot;#when-not-to-use-std-forward&quot;&gt;skip to the end&lt;/a&gt;.&lt;/p&gt;
+&lt;h2 id=&quot;rvalue-references-and-move-semantics&quot;&gt;&lt;a name=&quot;rvalue-references-and-move-semantics&quot; href=&quot;#rvalue-references-and-move-semantics&quot; class=&quot;headerlink&quot; title=&quot;Link to &amp;quot;rvalue references and move semantics&amp;quot;&quot;&gt;🔗&lt;/a&gt;rvalue references and move semantics&lt;/h2&gt;&lt;p&gt;Since C++11, we have the difference between lvalue and rvalue references:&lt;/p&gt;
+&lt;figure class=&quot;highlight c++&quot;&gt;&lt;table&gt;&lt;tr&gt;&lt;td class=&quot;gutter&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;1&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;2&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;3&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;4&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;5&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;td class=&quot;code&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;&lt;span class=&quot;comment&quot;&gt;// A function with an lvalue reference parameter&lt;/span&gt;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;&lt;span class=&quot;function&quot;&gt;&lt;span class=&quot;keyword&quot;&gt;void&lt;/span&gt; &lt;span class=&quot;title&quot;&gt;lvalue_function&lt;/span&gt;&lt;span class=&quot;params&quot;&gt;(type&amp;amp; reference)&lt;/span&gt;&lt;/span&gt;;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;&lt;span class=&quot;comment&quot;&gt;// A function with an rvalue reference parameter&lt;/span&gt;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;&lt;span class=&quot;function&quot;&gt;&lt;span class=&quot;keyword&quot;&gt;void&lt;/span&gt; &lt;span class=&quot;title&quot;&gt;rvalue_function&lt;/span&gt;&lt;span class=&quot;params&quot;&gt;(type&amp;amp;&amp;amp; reference)&lt;/span&gt;&lt;/span&gt;;&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;/figure&gt;
+
+&lt;p&gt;With them, we can implement something similar to &lt;code&gt;std::unique_ptr&lt;/code&gt;, which only became possible in C++11:&lt;/p&gt;</summary>
+    
+    
+    
+    
+    <category term="c++" scheme="https://joelfilho.com/tags/c/"/>
+    
+    <category term="language-tips" scheme="https://joelfilho.com/tags/language-tips/"/>
+    
+  </entry>
+  
+</feed>
