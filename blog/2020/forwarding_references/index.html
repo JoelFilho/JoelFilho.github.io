@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  
+  
+  <title>Forwarding References? Forwardable References! (or: don&#39;t use std::forward just because you can) | Joel Filho</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+  <meta name="description" content="Forwarding references are a somewhat controversial topic, starting from their name. When working with them, we’ve been taught to use std::forward. After all, it’s in their name! In this article, we’ll">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Forwarding References? Forwardable References! (or: don&#39;t use std::forward just because you can)">
+<meta property="og:url" content="https://joelfilho.github.io/blog/2020/forwarding_references/">
+<meta property="og:site_name" content="Joel Filho">
+<meta property="og:description" content="Forwarding references are a somewhat controversial topic, starting from their name. When working with them, we’ve been taught to use std::forward. After all, it’s in their name! In this article, we’ll">
+<meta property="og:locale" content="en_US">
+<meta property="article:published_time" content="2020-11-12T07:26:40.000Z">
+<meta property="article:author" content="Joel Filho">
+<meta property="article:tag" content="c++">
+<meta property="article:tag" content="language-tips">
+<meta name="twitter:card" content="summary">
+  
+  
+    <link rel="shortcut icon" href="/favicon.png">
+  
+  
+    
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/typeface-source-code-pro@0.0.71/index.min.css">
+
+  
+  
+<link rel="stylesheet" href="/css/style.css">
+
+  
+    
+<link rel="stylesheet" href="/fancybox/jquery.fancybox.min.css">
+
+  
+<meta name="generator" content="Hexo 5.2.0"></head>
+
+<body>
+  <div id="container">
+    <div id="wrap">
+      <header id="header">
+  <div id="banner"></div>
+  <div id="header-outer" class="outer">
+    <div id="header-title" class="inner">
+      <h1 id="logo-wrap">
+        <a href="/" id="logo">Joel Filho</a>
+      </h1>
+      
+        <h2 id="subtitle-wrap">
+          <a href="/" id="subtitle">Modern C++ &amp; Embedded Systems</a>
+        </h2>
+      
+    </div>
+    <div id="header-inner" class="inner">
+      <nav id="main-nav">
+        <a id="main-nav-toggle" class="nav-icon"></a>
+        
+          <a class="main-nav-link" href="/">Home</a>
+        
+          <a class="main-nav-link" href="/archives">Archives</a>
+        
+      </nav>
+      <nav id="sub-nav">
+        
+        <a id="nav-search-btn" class="nav-icon" title="Search"></a>
+      </nav>
+      <div id="search-form-wrap">
+        <form action="//google.com/search" method="get" accept-charset="UTF-8" class="search-form"><input type="search" name="q" class="search-form-input" placeholder="Search"><button type="submit" class="search-form-submit">&#xF002;</button><input type="hidden" name="sitesearch" value="https://JoelFilho.github.io"></form>
+      </div>
+    </div>
+  </div>
+</header>
+
+      <div class="outer">
+        <section id="main"><article id="post-forwarding_references" class="h-entry article article-type-post" itemprop="blogPost" itemscope itemtype="https://schema.org/BlogPosting">
+  <div class="article-meta">
+    <a href="/blog/2020/forwarding_references/" class="article-date">
+  <time class="dt-published" datetime="2020-11-12T07:26:40.000Z" itemprop="datePublished">2020-11-12</time>
+</a>
+    
+  </div>
+  <div class="article-inner">
+    
+    
+      <header class="article-header">
+        
+  
+    <h1 class="p-name article-title" itemprop="headline name">
+      Forwarding References? Forwardable References! (or: don&#39;t use std::forward just because you can)
+    </h1>
+  
+
+      </header>
+    
+    <div class="e-content article-entry" itemprop="articleBody">
+      
+        <p>Forwarding references are a somewhat controversial topic, starting from their name.
+When working with them, we’ve been taught to use <code>std::forward</code>. After all, it’s in their name!</p>
+<p>In this article, we’ll see when using <code>std::forward</code> is not only detrimental, it’s plain wrong.</p>
+<p>If you’re <em>already</em> tired of reading introductions on rvalue references, move semantics and perfect forwarding, <a href="#when-not-to-use-std-forward">skip to the end</a>.</p>
+<h2 id="rvalue-references-and-move-semantics"><a name="rvalue-references-and-move-semantics" href="#rvalue-references-and-move-semantics" class="headerlink" title="Link to &quot;rvalue references and move semantics&quot;">🔗</a>rvalue references and move semantics</h2><p>Since C++11, we have the difference between lvalue and rvalue references:</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// A function with an lvalue reference parameter</span></span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">lvalue_function</span><span class="params">(type&amp; reference)</span></span>;</span><br><span class="line"></span><br><span class="line"><span class="comment">// A function with an rvalue reference parameter</span></span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">rvalue_function</span><span class="params">(type&amp;&amp; reference)</span></span>;</span><br></pre></td></tr></table></figure>
+
+<p>With them, we can implement something similar to <code>std::unique_ptr</code>, which only became possible in C++11:</p>
+<a id="more"></a>
+
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">template</span>&lt;<span class="keyword">typename</span> T&gt;</span><br><span class="line"><span class="class"><span class="keyword">class</span> <span class="title">my_unique_ptr</span>&#123;</span></span><br><span class="line"><span class="keyword">public</span>:</span><br><span class="line">	<span class="comment">// Default constructor: Let's default construct the data.</span></span><br><span class="line">	my_unique_ptr() : ptr&#123;<span class="keyword">new</span> T&#123;&#125;&#125; &#123;&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">// Copy constructor: would copy the contents.</span></span><br><span class="line">	<span class="comment">// In unique_ptr semantics, we cannot use this.</span></span><br><span class="line">	my_unique_ptr(my_unique_ptr&amp;) = <span class="keyword">delete</span>;</span><br><span class="line"></span><br><span class="line">	<span class="comment">// Move constructor: we strip the contents of the parameter.</span></span><br><span class="line">	<span class="comment">// For unique_ptr, we guarantee only one class points to the data</span></span><br><span class="line">	my_unique_ptr(my_unique_ptr&amp;&amp; other) : ptr&#123;<span class="built_in">std</span>::exchange(other.ptr, <span class="literal">nullptr</span>)&#125; &#123;&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">// Destructor: only one object deletes the allocated pointer.</span></span><br><span class="line">	<span class="comment">// This way, we never have a dangling pointer. RAII FTW!</span></span><br><span class="line">	~my_unique_ptr() &#123; <span class="keyword">delete</span> ptr; &#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">// operators * and -&gt; are not relevant for this example.</span></span><br><span class="line"><span class="keyword">private</span>:</span><br><span class="line">	T* ptr;</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+
+<p>Now, to use this move-only type, we need to explicitly indicate our intention:</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">&#123;</span><br><span class="line">	my_unique_ptr&lt;<span class="keyword">int</span>&gt; p;</span><br><span class="line">	<span class="comment">// my_unique_ptr&lt;int&gt; p_copy(p); // Compiler error: can't be copied!</span></span><br><span class="line">	my_unique_ptr&lt;<span class="keyword">int</span>&gt; p_move&#123;<span class="built_in">std</span>::<span class="built_in">move</span>(p)&#125;; <span class="comment">// Explicitly moving (reminder: std::move doesn't actually move anything by itself!)</span></span><br><span class="line">&#125;</span><br><span class="line"><span class="comment">// At the end of the scope, both p and p_move's destructors are called.</span></span><br><span class="line"><span class="comment">// Thanks to move semantics, we don't have a double-free problem!</span></span><br></pre></td></tr></table></figure>
+
+<p>Move semantics were a paradigm shift in C++. They not just allowed the creation of move-only “handle-like” types, but, more importantly, replaced the <a target="_blank" rel="noopener" href="https://en.wikibooks.org/wiki/More_C%2B%2B_Idioms/Copy-and-swap">old copy-and-swap idiom</a>. <code>std::vector</code>, as many other containers, now move its internal pointers to data on the heap with move semantics:</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// Imagine a function where we need a mutable vector for operations inside.</span></span><br><span class="line"><span class="comment">// If we have a reference parameter and copy inside, it may be less optimal.</span></span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">do_something</span><span class="params">(<span class="built_in">std</span>::<span class="built_in">vector</span>&lt;<span class="keyword">int</span>&gt;)</span></span>;</span><br><span class="line"></span><br><span class="line"><span class="built_in">std</span>::<span class="built_in">vector</span>&lt;<span class="keyword">int</span>&gt; v = some_generator_function(); <span class="comment">// We generate a vector with a lot of data in the heap.</span></span><br><span class="line">do_something(v); <span class="comment">// v is copied. We need to allocate an entire copy of its contents.</span></span><br><span class="line">do_something(<span class="built_in">std</span>::<span class="built_in">move</span>(v)); <span class="comment">// v's contents are moved. Expensive copy was prevented.</span></span><br><span class="line"></span><br><span class="line">assert(v.empty()); <span class="comment">// Guaranteed by the standard: v is empty after move.</span></span><br></pre></td></tr></table></figure>
+
+<h2 id="forwarding-references"><a name="forwarding-references" href="#forwarding-references" class="headerlink" title="Link to &quot;Forwarding references&quot;">🔗</a>Forwarding references</h2><p>After almost a decade, it’s no doubt move semantics are important to the language.</p>
+<p>However, they’re not perfectly straight-forward. The problem starts to arise when we combine the declaration with templates:</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">template</span>&lt;<span class="keyword">typename</span> T&gt;</span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">do_something</span><span class="params">(T&amp;&amp; data)</span></span>&#123;</span><br><span class="line">	<span class="comment">// Do something first...</span></span><br><span class="line">	<span class="comment">// ... then move the rvalue to complete doing something else</span></span><br><span class="line">	do_something_else(<span class="built_in">std</span>::<span class="built_in">move</span>(data));</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>What looks like a trivial function gets a little complicated when, somehow, it accepts non-rvalue references:</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="built_in">std</span>::<span class="built_in">vector</span>&lt;<span class="keyword">int</span>&gt; my_vector&#123;<span class="number">1</span>, <span class="number">2</span>, <span class="number">3</span>, <span class="number">4</span>, <span class="number">5</span>&#125;;</span><br><span class="line">do_something(my_vector); <span class="comment">// Accepted an lvalue reference without calling std::move? </span></span><br><span class="line"><span class="keyword">bool</span> empty = my_vector.empty(); <span class="comment">// Is this true or false?</span></span><br></pre></td></tr></table></figure>
+
+<p>What if we const it instead?</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">const</span> <span class="built_in">std</span>::<span class="built_in">vector</span>&lt;<span class="keyword">int</span>&gt; my_vector&#123;<span class="number">1</span>, <span class="number">2</span>, <span class="number">3</span>, <span class="number">4</span>, <span class="number">5</span>&#125;;</span><br><span class="line">do_something(my_vector); <span class="comment">// Accepted an lvalue reference without calling std::move? </span></span><br><span class="line"><span class="keyword">bool</span> empty = my_vector.empty(); <span class="comment">// Is this true or false?</span></span><br></pre></td></tr></table></figure>
+
+<p>What are the values of <code>empty</code> in both cases? Make your bets and <a target="_blank" rel="noopener" href="https://godbolt.org/z/TGWbxr">check it on Compiler Explorer</a>.</p>
+<p>Why does this happen? It all comes down to the inferred types for the template parameter <code>T</code> (<a target="_blank" rel="noopener" href="https://godbolt.org/z/azMvsM">see in Compiler Explorer</a>). These happen due to <a target="_blank" rel="noopener" href="http://eel.is/c++draft/dcl.ref#6"><strong>reference collapsing</strong> rules</a>. In short, an rvalue reference to an lvalue reference collapses into an lvalue reference.</p>
+<p>The great Scott Meyers <a target="_blank" rel="noopener" href="https://isocpp.org/blog/2012/11/universal-references-in-c11-scott-meyers">explained it way better than I can</a>. He called these references <strong>universal references</strong>. The committee, however, decided calling them <strong>forwarding references</strong> instead.</p>
+<p>So, the correct way to implement our <code>do_something</code> function is using <code>std::forward</code> instead of <code>std::move</code>. This is what we call <strong>perfect forwarding</strong>:</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">template</span>&lt;<span class="keyword">typename</span> T&gt;</span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">do_something</span><span class="params">(T&amp;&amp; data)</span></span>&#123;</span><br><span class="line">	do_something_else(<span class="built_in">std</span>::forward&lt;T&gt;(data));</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h2 id="when-not-to-use-std-forward"><a name="when-not-to-use-std-forward" href="#when-not-to-use-std-forward" class="headerlink" title="Link to &quot;When is using std::forward wrong?&quot;">🔗</a><a href="#when-not-to-use-std-forward"></a> When is using std::forward wrong?</h2><p>So what? We all know we should use <code>std::forward</code> by now!
+Yes, rvalue references and perfect forwarding are known concepts. For almost a decade.</p>
+<p>The reason I wrote this article is for a cautionary reminder: <strong>just because it’s a forwarding reference, it doesn’t mean you must call <code>std::forward</code></strong>.</p>
+<p>Why did I come to this conclusion? <strong>Story time</strong>!</p>
+<p>While working on a library, I wrote something like this:</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">template</span>&lt;<span class="keyword">typename</span> F, <span class="keyword">typename</span>... Args&gt;</span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">invoke_n_times</span><span class="params">(F&amp;&amp; f, <span class="built_in">std</span>::<span class="keyword">size_t</span> count, Args&amp;&amp;... args)</span></span>&#123;</span><br><span class="line">	<span class="keyword">while</span>(count--)&#123;</span><br><span class="line">		<span class="built_in">std</span>::invoke(f, args...);</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>Then, I realized: I have forwarding references, so I should probably <code>std::forward</code> them, right?</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">template</span>&lt;<span class="keyword">typename</span> F, <span class="keyword">typename</span>... Args&gt;</span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">invoke_n_times</span><span class="params">(F&amp;&amp; f, <span class="built_in">std</span>::<span class="keyword">size_t</span> count, Args&amp;&amp;... args)</span></span>&#123;</span><br><span class="line">	<span class="keyword">while</span>(count--)&#123;</span><br><span class="line">		<span class="built_in">std</span>::invoke(<span class="built_in">std</span>::forward&lt;F&gt;(f), <span class="built_in">std</span>::forward&lt;Args&gt;(args)...);</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>… right?</p>
+<p><strong>Wrong</strong>, and in both cases.</p>
+<p>When working with rvalue references, we need to assume move semantics. For our invoke arguments <code>Args</code>, we might need to consider the possibility of value parameters from our functor:</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">print_shuffled</span><span class="params">(<span class="built_in">std</span>::<span class="built_in">vector</span>&lt;<span class="keyword">int</span>&gt; v)</span></span>&#123;</span><br><span class="line">	<span class="comment">// v is captured by value, so it's more efficient than copying inside</span></span><br><span class="line">	shuffle(v);</span><br><span class="line">	<span class="built_in">print</span>(v);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">invoke_n_times(print_shuffled, <span class="number">5</span>, <span class="built_in">std</span>::<span class="built_in">vector</span>&lt;<span class="keyword">int</span>&gt;&#123;<span class="number">1</span>,<span class="number">2</span>,<span class="number">3</span>,<span class="number">4</span>,<span class="number">5</span>&#125;); <span class="comment">// the third argument is a temporary, i.e. an rvalue</span></span><br></pre></td></tr></table></figure>
+
+<p>What would be the output of this, with perfect forwarding? Definitely not what one would expect when doing that call. <a target="_blank" rel="noopener" href="https://godbolt.org/z/xaqYdT">See in Compiler Explorer</a>.</p>
+<p>And the function, what could go wrong? This:</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">prefixed_shuffle_printer</span>&#123;</span></span><br><span class="line">	<span class="built_in">std</span>::<span class="built_in">vector</span>&lt;<span class="keyword">int</span>&gt; prefix;</span><br><span class="line"></span><br><span class="line">	<span class="comment">// Concatenates a prefix with the input vector, then shuffles it.</span></span><br><span class="line">	<span class="comment">// prefix is copied, then v is appended.</span></span><br><span class="line">	<span class="function"><span class="keyword">void</span> <span class="title">operator</span><span class="params">()</span><span class="params">(<span class="keyword">const</span> <span class="built_in">std</span>::<span class="built_in">vector</span>&lt;<span class="keyword">int</span>&gt;&amp; v)</span> &amp; </span>&#123;</span><br><span class="line">		print_shuffled(concat(prefix, v));</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">// We can optimize a copy by not copying our prefix.</span></span><br><span class="line">	<span class="comment">// Surprise: an r-value qualified member function!</span></span><br><span class="line">	<span class="function"><span class="keyword">void</span> <span class="title">operator</span><span class="params">()</span><span class="params">(<span class="keyword">const</span> <span class="built_in">std</span>::<span class="built_in">vector</span>&lt;<span class="keyword">int</span>&gt;&amp; v)</span> &amp;&amp; </span>&#123;</span><br><span class="line">		print_shuffled(concat(<span class="built_in">std</span>::<span class="built_in">move</span>(prefix), v));</span><br><span class="line">	&#125;</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+
+<p>We optimized a copy. But will it work with our perfect forwarding? You guessed it. <a target="_blank" rel="noopener" href="https://godbolt.org/z/znKTG1">See in Compiler Explorer</a>.</p>
+<p>So, to answer our initial question: should we perfect forward here? No, in none of the cases. The original one was the right one (<a target="_blank" rel="noopener" href="https://godbolt.org/z/91ecME">Compiler Explorer link</a>).</p>
+<p><strong>Note</strong>: One might ask if the forwarding reference parameters are the right way to go in this example. The possibility of passing temporaries, mutable functors or non-const lvalue parameters force us to use them, for API soundness. The variadics also don’t allow us to just declare an overload set with const/non-const lvalue references.</p>
+<h3 id="optimizing"><a name="optimizing" href="#optimizing" class="headerlink" title="Link to &quot;Optimizing?&quot;">🔗</a>Optimizing?</h3><p>We now know we shouldn’t just blindly call <code>std::forward</code> in every forwarding reference.</p>
+<p>But we can forward one option, when we’re sure we’re not using our parameters anymore (<a target="_blank" rel="noopener" href="https://godbolt.org/z/b3986E">Compiler Explorer link</a>):</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">template</span>&lt;<span class="keyword">typename</span> F, <span class="keyword">typename</span>... Args&gt;</span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">invoke_n_times</span><span class="params">(F&amp;&amp; f, <span class="built_in">std</span>::<span class="keyword">size_t</span> count, Args&amp;&amp;... args)</span></span>&#123;</span><br><span class="line">	<span class="keyword">while</span>(count-- &gt; <span class="number">1</span>)&#123;</span><br><span class="line">		<span class="built_in">std</span>::invoke(f, args...);</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">// Move only the last one, if anything is movable.</span></span><br><span class="line">	<span class="keyword">if</span>(count == <span class="number">0</span>)&#123;</span><br><span class="line">		<span class="built_in">std</span>::invoke(<span class="built_in">std</span>::forward&lt;F&gt;(f), <span class="built_in">std</span>::forward&lt;Args&gt;(args)...);</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>Does it make any difference? Possibly, in the right case. Is it worth it for the general case? Who knows?</p>
+<h2 id="in-conclusion…"><a name="in-conclusion…" href="#in-conclusion…" class="headerlink" title="Link to &quot;In conclusion…&quot;">🔗</a>In conclusion…</h2><p>Like <code>std::move</code>, <code>std::forward</code> should only be used when you want to move. <sup>(from a forwarding rvalue reference)</sup></p>
+<p>In general, use <code>std::forward</code> only on the last time a forwarding reference parameter is used.</p>
+<p>Naming is hard. <code>std::move</code> doesn’t move, and <code>std::forward</code> doesn’t forward. <code>std::move</code> implies intent to move, but so does <code>std::forward</code>.</p>
+<p>And that’s somewhat trivial. C++ is fine.</p>
+<h2 id="is-there-any-hope"><a name="is-there-any-hope" href="#is-there-any-hope" class="headerlink" title="Link to &quot;Is there any hope?&quot;">🔗</a>Is there any hope?</h2><p>In his latest talks (<a target="_blank" rel="noopener" href="https://www.youtube.com/watch?v=6lurOCdaj0Y">Empirically Measuring, &amp; Reducing, C++’s Accidental Complexity</a>), Herb Sutter has been presenting his draft proposal “<a target="_blank" rel="noopener" href="https://github.com/hsutter/708">Parameter passing -&gt; guaranteed unified initialization and unified value-setting</a>“. With this proposal, he intends to simplify function parameters by using intent keywords, rather than reference semantics.</p>
+<p>The proposed attributes for parameter declaration are:</p>
+<ul>
+<li><code>in</code> - will only be read from. Treated as const lvalue.</li>
+<li><code>inout</code> - can read and write to. Treated as non-const lvalue.</li>
+<li><code>out</code> - will write into, as the first thing in each path.</li>
+<li><code>move</code> - will move from. Treated as non-const lvalue.</li>
+<li><code>forward</code> - will pass along. <strong>Treated as a const lvalue</strong>, except in the last use, which “forwards” it.</li>
+</ul>
+<p>The way it’s currently written, <code>forward</code> parameters won’t work as we want for our example. There might hope, though, <strong>if a <code>forward</code> parameter keeps its cv-qualifiers as an lvalue</strong>.</p>
+<p>If so, we might end up with this:</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">invoke_n_times</span><span class="params">(forward <span class="keyword">auto</span> f, <span class="built_in">std</span>::<span class="keyword">size_t</span> count, forward <span class="keyword">auto</span>... args)</span></span>&#123;</span><br><span class="line">	<span class="keyword">while</span>(count--)&#123;</span><br><span class="line">		<span class="built_in">std</span>::invoke(f, args...);</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>Well, if the compiler is smart enough to infer the definite last use from a loop… If not, that’s still a special case, and we still can take advantage of this change:</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">invoke_twice</span><span class="params">(forward <span class="keyword">auto</span> f, forward <span class="keyword">auto</span>... args)</span></span>&#123;</span><br><span class="line">	<span class="built_in">std</span>::invoke(f, args...); <span class="comment">// Automatically const-correct</span></span><br><span class="line">	<span class="built_in">std</span>::invoke(f, args...); <span class="comment">// Automatically forwards</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>Of course, I’m only naive, and may be completely wrong about everything, just like I was on <a target="_blank" rel="noopener" href="https://www.reddit.com/r/cpp/comments/genb18/explicit_parameters_a_proposal_for_extending_the/">adding an attribute that affected overload resolution</a>. But we should always strive to learn from our mistakes… right?</p>
+
+      
+    </div>
+    <footer class="article-footer">
+      <a data-url="https://joelfilho.github.io/blog/2020/forwarding_references/" data-id="ckhee2k6n0004agfh6elj7kbi" data-title="Forwarding References? Forwardable References! (or: don&#39;t use std::forward just because you can)" class="article-share-link">Share</a>
+      
+      
+      
+  <ul class="article-tag-list" itemprop="keywords"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/c/" rel="tag">c++</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/language-tips/" rel="tag">language-tips</a></li></ul>
+
+    </footer>
+  </div>
+  
+    
+  
+</article>
+
+
+</section>
+        
+          <aside id="sidebar">
+  
+    
+  <div class="widget-wrap">
+    <h3 class="widget-title">Tags</h3>
+    <div class="widget">
+      <ul class="tag-list" itemprop="keywords"><li class="tag-list-item"><a class="tag-list-link" href="/tags/c/" rel="tag">c++</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/language-tips/" rel="tag">language-tips</a></li></ul>
+    </div>
+  </div>
+
+
+  
+    
+  <div class="widget-wrap">
+    <h3 class="widget-title">Recent Posts</h3>
+    <div class="widget">
+      <ul>
+        
+          <li>
+            <a href="/blog/2020/forwarding_references/">Forwarding References? Forwardable References! (or: don&#39;t use std::forward just because you can)</a>
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+
+  
+</aside>
+        
+      </div>
+      <footer id="footer">
+  
+  <div class="outer">
+    <div id="footer-info" class="inner">
+      
+      &copy; 2020 Joel Filho<br>
+      Powered by <a href="https://hexo.io/" target="_blank">Hexo</a>
+    </div>
+  </div>
+</footer>
+
+    </div>
+    <nav id="mobile-nav">
+  
+    <a href="/" class="mobile-nav-link">Home</a>
+  
+    <a href="/archives" class="mobile-nav-link">Archives</a>
+  
+</nav>
+    
+
+
+<script src="/js/jquery-3.4.1.min.js"></script>
+
+
+
+  
+<script src="/fancybox/jquery.fancybox.min.js"></script>
+
+
+
+
+<script src="/js/script.js"></script>
+
+
+
+
+
+  </div>
+</body>
+</html>

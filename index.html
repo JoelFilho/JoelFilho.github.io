@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  
+  
+  <title>Joel Filho</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+  <meta name="description" content="A blog about Embedded Systems development in Modern C++">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Joel Filho">
+<meta property="og:url" content="https://joelfilho.github.io/">
+<meta property="og:site_name" content="Joel Filho">
+<meta property="og:description" content="A blog about Embedded Systems development in Modern C++">
+<meta property="og:locale" content="en_US">
+<meta property="article:author" content="Joel Filho">
+<meta property="article:tag" content="C++, Embedded Systems, Modern C++">
+<meta name="twitter:card" content="summary">
+  
+  
+    <link rel="shortcut icon" href="/favicon.png">
+  
+  
+    
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/typeface-source-code-pro@0.0.71/index.min.css">
+
+  
+  
+<link rel="stylesheet" href="/css/style.css">
+
+  
+    
+<link rel="stylesheet" href="/fancybox/jquery.fancybox.min.css">
+
+  
+<meta name="generator" content="Hexo 5.2.0"></head>
+
+<body>
+  <div id="container">
+    <div id="wrap">
+      <header id="header">
+  <div id="banner"></div>
+  <div id="header-outer" class="outer">
+    <div id="header-title" class="inner">
+      <h1 id="logo-wrap">
+        <a href="/" id="logo">Joel Filho</a>
+      </h1>
+      
+        <h2 id="subtitle-wrap">
+          <a href="/" id="subtitle">Modern C++ &amp; Embedded Systems</a>
+        </h2>
+      
+    </div>
+    <div id="header-inner" class="inner">
+      <nav id="main-nav">
+        <a id="main-nav-toggle" class="nav-icon"></a>
+        
+          <a class="main-nav-link" href="/">Home</a>
+        
+          <a class="main-nav-link" href="/archives">Archives</a>
+        
+      </nav>
+      <nav id="sub-nav">
+        
+        <a id="nav-search-btn" class="nav-icon" title="Search"></a>
+      </nav>
+      <div id="search-form-wrap">
+        <form action="//google.com/search" method="get" accept-charset="UTF-8" class="search-form"><input type="search" name="q" class="search-form-input" placeholder="Search"><button type="submit" class="search-form-submit">&#xF002;</button><input type="hidden" name="sitesearch" value="https://JoelFilho.github.io"></form>
+      </div>
+    </div>
+  </div>
+</header>
+
+      <div class="outer">
+        <section id="main">
+  
+    <article id="post-forwarding_references" class="h-entry article article-type-post" itemprop="blogPost" itemscope itemtype="https://schema.org/BlogPosting">
+  <div class="article-meta">
+    <a href="/blog/2020/forwarding_references/" class="article-date">
+  <time class="dt-published" datetime="2020-11-12T07:26:40.000Z" itemprop="datePublished">2020-11-12</time>
+</a>
+    
+  </div>
+  <div class="article-inner">
+    
+    
+      <header class="article-header">
+        
+  
+    <h1 itemprop="name">
+      <a class="p-name article-title" href="/blog/2020/forwarding_references/">Forwarding References? Forwardable References! (or: don&#39;t use std::forward just because you can)</a>
+    </h1>
+  
+
+      </header>
+    
+    <div class="e-content article-entry" itemprop="articleBody">
+      
+        <p>Forwarding references are a somewhat controversial topic, starting from their name.
+When working with them, we’ve been taught to use <code>std::forward</code>. After all, it’s in their name!</p>
+<p>In this article, we’ll see when using <code>std::forward</code> is not only detrimental, it’s plain wrong.</p>
+<p>If you’re <em>already</em> tired of reading introductions on rvalue references, move semantics and perfect forwarding, <a href="/blog/2020/forwarding_references/#when-not-to-use-std-forward">skip to the end</a>.</p>
+<h2 id="rvalue-references-and-move-semantics"><a name="rvalue-references-and-move-semantics" href="/blog/2020/forwarding_references/#rvalue-references-and-move-semantics" class="headerlink" title="Link to &quot;rvalue references and move semantics&quot;">🔗</a>rvalue references and move semantics</h2><p>Since C++11, we have the difference between lvalue and rvalue references:</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// A function with an lvalue reference parameter</span></span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">lvalue_function</span><span class="params">(type&amp; reference)</span></span>;</span><br><span class="line"></span><br><span class="line"><span class="comment">// A function with an rvalue reference parameter</span></span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">rvalue_function</span><span class="params">(type&amp;&amp; reference)</span></span>;</span><br></pre></td></tr></table></figure>
+
+<p>With them, we can implement something similar to <code>std::unique_ptr</code>, which only became possible in C++11:</p>
+        
+          <p class="article-more-link">
+            <a href="/blog/2020/forwarding_references/#more">Continue Reading...</a>
+          </p>
+        
+      
+    </div>
+    <footer class="article-footer">
+      <a data-url="https://joelfilho.github.io/blog/2020/forwarding_references/" data-id="ckhee2k6n0004agfh6elj7kbi" data-title="Forwarding References? Forwardable References! (or: don&#39;t use std::forward just because you can)" class="article-share-link">Share</a>
+      
+      
+      
+  <ul class="article-tag-list" itemprop="keywords"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/c/" rel="tag">c++</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/language-tips/" rel="tag">language-tips</a></li></ul>
+
+    </footer>
+  </div>
+  
+</article>
+
+
+
+  
+
+
+</section>
+        
+          <aside id="sidebar">
+  
+    
+  <div class="widget-wrap">
+    <h3 class="widget-title">Tags</h3>
+    <div class="widget">
+      <ul class="tag-list" itemprop="keywords"><li class="tag-list-item"><a class="tag-list-link" href="/tags/c/" rel="tag">c++</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/language-tips/" rel="tag">language-tips</a></li></ul>
+    </div>
+  </div>
+
+
+  
+    
+  <div class="widget-wrap">
+    <h3 class="widget-title">Recent Posts</h3>
+    <div class="widget">
+      <ul>
+        
+          <li>
+            <a href="/blog/2020/forwarding_references/">Forwarding References? Forwardable References! (or: don&#39;t use std::forward just because you can)</a>
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+
+  
+</aside>
+        
+      </div>
+      <footer id="footer">
+  
+  <div class="outer">
+    <div id="footer-info" class="inner">
+      
+      &copy; 2020 Joel Filho<br>
+      Powered by <a href="https://hexo.io/" target="_blank">Hexo</a>
+    </div>
+  </div>
+</footer>
+
+    </div>
+    <nav id="mobile-nav">
+  
+    <a href="/" class="mobile-nav-link">Home</a>
+  
+    <a href="/archives" class="mobile-nav-link">Archives</a>
+  
+</nav>
+    
+
+
+<script src="/js/jquery-3.4.1.min.js"></script>
+
+
+
+  
+<script src="/fancybox/jquery.fancybox.min.js"></script>
+
+
+
+
+<script src="/js/script.js"></script>
+
+
+
+
+
+  </div>
+</body>
+</html>
