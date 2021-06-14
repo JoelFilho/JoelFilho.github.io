@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  
+  
+  <title>Using C++20&#39;s concepts as a CRTP alternative: a viable replacement? | Joel Filho</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+  <meta name="description" content="A few months ago, a user asked on Reddit “How suitable are concepts for use as a replacement for CRTP interfaces?”. The main conclusion of the discussion was that concepts were designed to constrain,">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Using C++20&#39;s concepts as a CRTP alternative: a viable replacement?">
+<meta property="og:url" content="https://joelfilho.com/blog/2021/emulating_crtp_with_cpp_concepts/">
+<meta property="og:site_name" content="Joel Filho">
+<meta property="og:description" content="A few months ago, a user asked on Reddit “How suitable are concepts for use as a replacement for CRTP interfaces?”. The main conclusion of the discussion was that concepts were designed to constrain,">
+<meta property="og:locale" content="en_US">
+<meta property="article:published_time" content="2021-06-14T10:40:00.000Z">
+<meta property="article:author" content="Joel Filho">
+<meta property="article:tag" content="c++">
+<meta property="article:tag" content="experiments">
+<meta property="article:tag" content="concepts">
+<meta name="twitter:card" content="summary">
+  
+    <link rel="alternate" href="/atom.xml" title="Joel Filho" type="application/atom+xml">
+  
+  
+    <link rel="shortcut icon" href="/favicon.png">
+  
+  
+    
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/typeface-source-code-pro@0.0.71/index.min.css">
+
+  
+  
+<link rel="stylesheet" href="/css/style.css">
+
+  
+    
+<link rel="stylesheet" href="/fancybox/jquery.fancybox.min.css">
+
+  
+<meta name="generator" content="Hexo 5.2.0"></head>
+
+<body>
+  <div id="container">
+    <div id="wrap">
+      <header id="header">
+  <div id="banner"></div>
+  <div id="header-outer" class="outer">
+    <div id="header-title" class="inner">
+      <h1 id="logo-wrap">
+        <a href="/" id="logo">Joel Filho</a>
+      </h1>
+      
+        <h2 id="subtitle-wrap">
+          <a href="/" id="subtitle">Modern C++ &amp; Embedded Systems</a>
+        </h2>
+      
+    </div>
+    <div id="header-inner" class="inner">
+      <nav id="main-nav">
+        <a id="main-nav-toggle" class="nav-icon"></a>
+        
+          <a class="main-nav-link" href="/">Home</a>
+        
+          <a class="main-nav-link" href="/archives">Archives</a>
+        
+          <a class="main-nav-link" target="_blank" rel="noopener" href="https://twitter.com/_JoelFilho">Twitter</a>
+        
+          <a class="main-nav-link" target="_blank" rel="noopener" href="https://github.com/JoelFilho">GitHub</a>
+        
+      </nav>
+      <nav id="sub-nav">
+        
+          <a id="nav-rss-link" class="nav-icon" href="/atom.xml" title="RSS Feed"></a>
+        
+        <a id="nav-search-btn" class="nav-icon" title="Search"></a>
+      </nav>
+      <div id="search-form-wrap">
+        <form action="//google.com/search" method="get" accept-charset="UTF-8" class="search-form"><input type="search" name="q" class="search-form-input" placeholder="Search"><button type="submit" class="search-form-submit">&#xF002;</button><input type="hidden" name="sitesearch" value="https://JoelFilho.com"></form>
+      </div>
+    </div>
+  </div>
+</header>
+
+      <div class="outer">
+        <section id="main"><article id="post-emulating_crtp_with_cpp_concepts" class="h-entry article article-type-post" itemprop="blogPost" itemscope itemtype="https://schema.org/BlogPosting">
+  <div class="article-meta">
+    <a href="/blog/2021/emulating_crtp_with_cpp_concepts/" class="article-date">
+  <time class="dt-published" datetime="2021-06-14T10:40:00.000Z" itemprop="datePublished">June 14, 2021</time>
+</a>
+    
+  </div>
+  <div class="article-inner">
+    
+    
+      <header class="article-header">
+        
+  
+    <h1 class="p-name article-title" itemprop="headline name">
+      Using C++20&#39;s concepts as a CRTP alternative: a viable replacement?
+    </h1>
+  
+
+      </header>
+    
+    <div class="e-content article-entry" itemprop="articleBody">
+      
+        <p>A few months ago, a user asked on Reddit <a target="_blank" rel="noopener" href="https://www.reddit.com/r/cpp/comments/kcinhu/how_suitable_are_concepts_for_use_as_a/">“How suitable are concepts for use as a replacement for CRTP interfaces?”</a>. The main conclusion of the discussion was that concepts were designed to constrain, not for what CRTP is used.</p>
+<p><strong>But what is CRTP used for?</strong> CRTP (Curiously Recurring Template Pattern) is a way of providing compile-time polymorphism through inheritance.
+It’s commonly used to extend functionality of a derived class, using some required implementation details provided by it.
+The main idea behind CRTP is:</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 1. We have a Base class template that utilizes a Derived template parameter</span></span><br><span class="line"><span class="keyword">template</span>&lt;<span class="keyword">typename</span> Derived&gt;</span><br><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">Base</span> &#123;</span></span><br><span class="line">    <span class="comment">// 2. We also have a public interface that our derived class wants to provide</span></span><br><span class="line">    <span class="function"><span class="keyword">auto</span> <span class="title">public_behavior</span><span class="params">()</span></span>&#123;</span><br><span class="line">        <span class="comment">// 3. We can safely cast the this pointer to the Derived class</span></span><br><span class="line">        <span class="keyword">auto</span>&amp; self = *<span class="keyword">static_cast</span>&lt;Derived*&gt;(<span class="keyword">this</span>);</span><br><span class="line"></span><br><span class="line">        <span class="comment">// 4. We then use the required provided behavior from the base class, and give our base behavior</span></span><br><span class="line">        <span class="keyword">return</span> do_something(self.provided_behavior());</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">&#125;;</span><br><span class="line"></span><br><span class="line"><span class="comment">// 5. We can have a derived class that inherits from Base, using itself as template parameter.</span></span><br><span class="line"><span class="comment">//    Notice it uses public inheritance, since we want to provide a public interface</span></span><br><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">MyDerived</span> :</span> Base&lt;MyDerived&gt; &#123;</span><br><span class="line">    <span class="comment">// 6. And then we provide the interface that the base class requires</span></span><br><span class="line">    <span class="function"><span class="keyword">auto</span> <span class="title">provided_behavior</span><span class="params">()</span> </span>&#123; <span class="comment">/*...*/</span> &#125;</span><br><span class="line">&#125;;</span><br><span class="line"></span><br><span class="line"><span class="comment">// 7. We can just invoke the public behavior, and no one using it needs to know it uses CRTP.</span></span><br><span class="line">MyDerived object;</span><br><span class="line">object.public_behavior();</span><br></pre></td></tr></table></figure>
+
+<p>Code reuse can be seen as CRTP’s most important feature, as per Daisy Hollman’s <a target="_blank" rel="noopener" href="https://www.youtube.com/watch?v=g89ZfEwqAXE">“Thoughts on Curiously Recurring Template Pattern” lightning talk</a>, since we can write the base class once, and inherit from it to implement the interface without repeating ourselves.</p>
+<p>One real-world example of how it’s done is on the Standard library, and standardized on C++20 (which means CRTP is far from an outdated technique!): <a target="_blank" rel="noopener" href="https://en.cppreference.com/w/cpp/ranges/view_interface"><code>std::ranges::view_interface</code></a>. With just two public member functions, we can provide a vast interface with CRTP!</p>
+<p>But the question is: <strong>can we emulate the behavior of CRTP without using inheritance?</strong></p>
+<p>Let’s go to the point: the short answer is yes, but there are some caveats. So, let’s explore an example and verify some issues we can encounter:</p>
+<a id="more"></a>
+
+<h1 id="our-crtp-example"><a name="our-crtp-example" href="#our-crtp-example" class="headerlink" title="Link to &quot;Our CRTP example&quot;">🔗</a>Our CRTP example</h1><p>For this article, we’ll utilize a tutorial writer’s favorite: Vectors!</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">namespace</span> mylib &#123;</span><br><span class="line"></span><br><span class="line"><span class="comment">// Our CRTP base class, representing a 2D or a 3D vector</span></span><br><span class="line"><span class="keyword">template</span>&lt;<span class="keyword">typename</span> Derived&gt;</span><br><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">Vector</span> &#123;</span></span><br><span class="line">    <span class="comment">// A basic operation. Our CRTP base class would have many of them, but one is enough.</span></span><br><span class="line">    <span class="keyword">auto</span> <span class="keyword">operator</span>+(<span class="keyword">const</span> Derived&amp; other) <span class="keyword">const</span> <span class="keyword">noexcept</span> &#123;</span><br><span class="line">        <span class="keyword">auto</span>&amp; self = *<span class="keyword">static_cast</span>&lt;<span class="keyword">const</span> Derived*&gt;(<span class="keyword">this</span>); <span class="comment">// Derived must be const-qualified</span></span><br><span class="line"></span><br><span class="line">        <span class="comment">// Let&#x27;s implement an operation that supports two vector sizes</span></span><br><span class="line">        <span class="function"><span class="keyword">if</span> <span class="title">constexpr</span><span class="params">(<span class="keyword">requires</span>&#123; self.z; &#125;)</span> </span>&#123; <span class="comment">// 3D-case, detecting if we have a Z-component</span></span><br><span class="line">            <span class="keyword">return</span> Derived &#123; self.x + other.x, self.y + other.y, self.z + other.z &#125;;</span><br><span class="line">        &#125; <span class="keyword">else</span> &#123; <span class="comment">// 2D, and base case</span></span><br><span class="line">            <span class="keyword">return</span> Derived &#123; self.x + other.x, self.y + other.y &#125;;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;;</span><br><span class="line"></span><br><span class="line"><span class="comment">// We then can declare our trivial Vector structures</span></span><br><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">Vector2f</span> :</span> Vector&lt;Vector2f&gt; &#123;</span><br><span class="line">    <span class="keyword">float</span> x;</span><br><span class="line">    <span class="keyword">float</span> y;</span><br><span class="line">&#125;;</span><br><span class="line"></span><br><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">Vector3i</span> :</span> Vector&lt;Vector3i&gt; &#123;</span><br><span class="line">    <span class="keyword">int</span> x;</span><br><span class="line">    <span class="keyword">int</span> y;</span><br><span class="line">    <span class="keyword">int</span> z;</span><br><span class="line">&#125;;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">// And then, we use our Vector library...</span></span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">main</span><span class="params">()</span></span>&#123;</span><br><span class="line">    mylib::Vector2f v1&#123;<span class="number">1</span>, <span class="number">0</span>&#125;;</span><br><span class="line">    mylib::Vector2f v2&#123;<span class="number">0</span>, <span class="number">1</span>&#125;;</span><br><span class="line"></span><br><span class="line">    mylib::Vector2f v3 = v1 + v2;</span><br><span class="line"></span><br><span class="line">    mylib::Vector3i v4&#123;<span class="number">1</span>, <span class="number">0</span>, <span class="number">0</span>&#125;;</span><br><span class="line">    mylib::Vector3i v5&#123;<span class="number">0</span>, <span class="number">1</span>, <span class="number">1</span>&#125;;</span><br><span class="line"></span><br><span class="line">    mylib::Vector3i v6 = v4 + v5;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>In this example, we have:</p>
+<ul>
+<li>A Vector CRTP base class, that can be used for 2D and 3D vectors, with any member type</li>
+<li>Two classes inheriting from it, demonstrating both behaviors we’ve described:<ul>
+<li><code>Vector2f</code>, with floating point types and 2 elements (2D)</li>
+<li><code>Vector3i</code>, with integer type and 3 elements (3D)</li>
+</ul>
+</li>
+</ul>
+<p>There’s one major issue, though: <strong>This example does not compile</strong>! (<a target="_blank" rel="noopener" href="https://godbolt.org/z/Tv3dsMPrE">Compiler Explorer link</a>)</p>
+<p>While the Vector derived classes are still aggregates, they require initialization of the base class! So, they need to look ugly, and now can compile! (<a target="_blank" rel="noopener" href="https://godbolt.org/z/Knxv3h5Po">Compiler Explorer link</a>)</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">main</span><span class="params">()</span></span>&#123;</span><br><span class="line">    mylib::Vector2f v1&#123;&#123;&#125;, <span class="number">1</span>, <span class="number">0</span>&#125;; <span class="comment">// Empty braces initializing the Vector&lt;...&gt; base everywhere!</span></span><br><span class="line">    mylib::Vector2f v2&#123;&#123;&#125;, <span class="number">0</span>, <span class="number">1</span>&#125;;</span><br><span class="line"></span><br><span class="line">    mylib::Vector2f v3 = v1 + v2;</span><br><span class="line"></span><br><span class="line">    mylib::Vector3i v4&#123;&#123;&#125;, <span class="number">1</span>, <span class="number">0</span>, <span class="number">0</span>&#125;;</span><br><span class="line">    mylib::Vector3i v5&#123;&#123;&#125;, <span class="number">0</span>, <span class="number">1</span>, <span class="number">1</span>&#125;;</span><br><span class="line"></span><br><span class="line">    mylib::Vector3i v6 = v4 + v5;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>In C++20, it’s possible to utilize designators with aggregate initializations, e.g. <code>Vector2f&#123;.x = 0, .y = 1&#125;</code>, but, like the previous syntax, it forces the knowledge into the user. So, as library writers, we’re forced into writing our constructors, to make the initial call work:</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">Vector2f</span> :</span> Vector&lt;Vector2f&gt; &#123;</span><br><span class="line">    constexpr Vector2f(float x, float y) noexcept : x(x), y(y) &#123;&#125;</span><br><span class="line">    <span class="keyword">float</span> x;</span><br><span class="line">    <span class="keyword">float</span> y;</span><br><span class="line">&#125;;</span><br><span class="line"></span><br><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">Vector3i</span> :</span> Vector&lt;Vector3i&gt; &#123;</span><br><span class="line">    constexpr Vector3i(int x, int y, int z) noexcept : x(x), y(y), z(z) &#123;&#125;</span><br><span class="line">    <span class="keyword">int</span> x;</span><br><span class="line">    <span class="keyword">int</span> y;</span><br><span class="line">    <span class="keyword">int</span> z;</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+
+<p>It works now (as always, <a target="_blank" rel="noopener" href="https://godbolt.org/z/GYsxd1KcK">Compiler Explorer link</a>), but at what cost? Our types are not aggregates anymore, so the user can’t use designators. They can still be trivial, but we need to declare the correct constructors.<sup>(left as an exercise to the reader)</sup></p>
+<h2 id="implementing-this-behavior-with-concepts"><a name="implementing-this-behavior-with-concepts" href="#implementing-this-behavior-with-concepts" class="headerlink" title="Link to &quot;Implementing this behavior with concepts&quot;">🔗</a>Implementing this behavior with concepts</h2><p>Due to how concepts work, we need to:</p>
+<ol>
+<li>Define our concept to accept 2D and 3D cases</li>
+<li>Implement the member function as a free function</li>
+</ol>
+<p>And our solution:</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">namespace</span> mylib &#123;</span><br><span class="line"></span><br><span class="line"><span class="comment">// We can describe our requirements separately...</span></span><br><span class="line"></span><br><span class="line"><span class="comment">// ... for 2D...</span></span><br><span class="line"><span class="keyword">template</span>&lt;<span class="keyword">typename</span> T&gt;</span><br><span class="line"><span class="keyword">concept</span> vector2d = <span class="keyword">requires</span>(T vec)&#123;</span><br><span class="line">    &#123;vec.x&#125;;</span><br><span class="line">    &#123;vec.y&#125;;</span><br><span class="line">&#125;;</span><br><span class="line"></span><br><span class="line"><span class="comment">// ... and for 3D...</span></span><br><span class="line"><span class="keyword">template</span>&lt;<span class="keyword">typename</span> T&gt;</span><br><span class="line"><span class="keyword">concept</span> vector3d = <span class="keyword">requires</span>(T vec)&#123;</span><br><span class="line">    &#123;vec.x&#125;;</span><br><span class="line">    &#123;vec.y&#125;;</span><br><span class="line">    &#123;vec.z&#125;;</span><br><span class="line">&#125;;</span><br><span class="line"></span><br><span class="line"><span class="comment">// ... and then compose our vector (#1)</span></span><br><span class="line"><span class="keyword">template</span>&lt;<span class="keyword">typename</span> T&gt;</span><br><span class="line"><span class="keyword">concept</span> <span class="built_in">vector</span> = vector2d&lt;T&gt; || vector3d&lt;T&gt;;</span><br><span class="line"></span><br><span class="line"><span class="comment">// Our operator is now a free function (#2)</span></span><br><span class="line"><span class="keyword">template</span>&lt;<span class="built_in">vector</span> Vector&gt;</span><br><span class="line"><span class="keyword">auto</span> <span class="keyword">operator</span>+(<span class="keyword">const</span> Vector&amp; self, <span class="keyword">const</span> Vector&amp; other) <span class="keyword">noexcept</span> &#123;</span><br><span class="line">    <span class="function"><span class="keyword">if</span> <span class="title">constexpr</span><span class="params">(vector3d&lt;Vector&gt;)</span> </span>&#123; <span class="comment">// We can replace our requires-clause with our concept</span></span><br><span class="line">        <span class="keyword">return</span> Vector &#123;self.x + other.x, self.y + other.y, self.z + other.z &#125;;</span><br><span class="line">    &#125; <span class="keyword">else</span> &#123; <span class="comment">// 2D, still the base case</span></span><br><span class="line">        <span class="keyword">return</span> Vector &#123;self.x + other.x, self.y + other.y &#125;;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">Vector2f</span> &#123;</span></span><br><span class="line">    <span class="keyword">float</span> x;</span><br><span class="line">    <span class="keyword">float</span> y;</span><br><span class="line">&#125;;</span><br><span class="line"></span><br><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">Vector3i</span> &#123;</span></span><br><span class="line">    <span class="keyword">int</span> x;</span><br><span class="line">    <span class="keyword">int</span> y;</span><br><span class="line">    <span class="keyword">int</span> z;</span><br><span class="line">&#125;;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>With this interface, we can compile our <code>main</code> example from previously, with no changes. And an advantage: our types now follow the rule of zero and are aggregates! (<a target="_blank" rel="noopener" href="https://godbolt.org/z/cdf87Pef8">Compiler Explorer Link</a>)</p>
+<p>But this example working doesn’t mean we can just retire CRTP. We have some issues, and we’ll explore them individually.</p>
+<h1 id="issue-1-crtp-is-opt-in-by-default-concepts-aren’t"><a name="issue-1-crtp-is-opt-in-by-default-concepts-aren’t" href="#issue-1-crtp-is-opt-in-by-default-concepts-aren’t" class="headerlink" title="Link to &quot;Issue #1: CRTP is opt-in by default, concepts aren’t&quot;">🔗</a>Issue #1: CRTP is opt-in by default, concepts aren’t</h1><p>Concepts are a great addition to the language, improving generic programming over duck typing or unreadable pools of <code>std::enable_if</code>s.
+Although they constrain the inputs to templates, they do not <em>semantically</em> constrain the program.</p>
+<p>For example, we can have a <code>mylib::Point2f</code> class that we accidentally implement the operations for it (<a target="_blank" rel="noopener" href="https://godbolt.org/z/vchEsoEsd">Compiler Explorer link</a>):</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">namespace</span> mylib &#123;</span><br><span class="line"></span><br><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">Point2f</span> &#123;</span></span><br><span class="line">    <span class="keyword">float</span> x;</span><br><span class="line">    <span class="keyword">float</span> y;</span><br><span class="line">&#125;;</span><br><span class="line"></span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">main</span><span class="params">()</span></span>&#123;</span><br><span class="line">    mylib::Point2f p1 &#123;<span class="number">0</span>, <span class="number">0</span>&#125;;</span><br><span class="line">    mylib::Point2f p2 &#123;<span class="number">1</span>, <span class="number">1</span>&#125;;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">auto</span> p3 = p1 + p2;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>This example compiles perfectly, but we have a problem: mathematically, adding two points makes no sense! <strong>It’s not a syntactic issue, it’s a semantic one</strong>.</p>
+<h2 id="solution-making-a-concept-opt-in"><a name="solution-making-a-concept-opt-in" href="#solution-making-a-concept-opt-in" class="headerlink" title="Link to &quot;Solution: Making a concept opt-in&quot;">🔗</a>Solution: Making a concept opt-in</h2><p>Making a concept opt-in is fairly trivial. We just need to:</p>
+<ol>
+<li>Create a boolean variable template with default <code>false</code></li>
+<li>Add that variable as a requirement in our concept declaration</li>
+</ol>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 1. We create the variable template</span></span><br><span class="line"><span class="keyword">template</span>&lt;<span class="keyword">typename</span> T&gt;</span><br><span class="line"><span class="keyword">inline</span> <span class="keyword">constexpr</span> <span class="keyword">bool</span> is_vector = <span class="literal">false</span>;</span><br><span class="line"></span><br><span class="line"><span class="comment">// 2. Then we update our concept to use it</span></span><br><span class="line"><span class="keyword">template</span>&lt;<span class="keyword">typename</span> T&gt;</span><br><span class="line"><span class="keyword">concept</span> <span class="built_in">vector</span> = is_vector&lt;T&gt; &amp;&amp; (vector2d&lt;T&gt; || vector3d&lt;T&gt;);</span><br></pre></td></tr></table></figure>
+
+<p>To opt-in into that concept, we then need to specialize the variable template:</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">template</span>&lt;&gt; <span class="keyword">inline</span> <span class="keyword">constexpr</span> <span class="keyword">bool</span> is_vector&lt;Vector2f&gt; = <span class="literal">true</span>;</span><br><span class="line"><span class="keyword">template</span>&lt;&gt; <span class="keyword">inline</span> <span class="keyword">constexpr</span> <span class="keyword">bool</span> is_vector&lt;Vector3i&gt; = <span class="literal">true</span>;</span><br></pre></td></tr></table></figure>
+
+<p>Now, we have what we wanted: Vector classes can be added, while our Point class can’t. (<a target="_blank" rel="noopener" href="https://godbolt.org/z/93qT11r9q">Compiler Explorer Link</a>)</p>
+<p><strong>Note</strong>: Making a concept opt-in is also not a novelty concept <sup>(ha!)</sup>. It’s used in the Standard, by the Ranges library, for the exact same purpose: avoiding wrong semantic usage of constrained functions. One example is the <a target="_blank" rel="noopener" href="https://en.cppreference.com/w/cpp/ranges/view"><code>std::ranges::enable_view</code></a> variable template.</p>
+<h1 id="issue-2-member-functions"><a name="issue-2-member-functions" href="#issue-2-member-functions" class="headerlink" title="Link to &quot;Issue #2: Member functions&quot;">🔗</a>Issue #2: Member functions</h1><p>Have you noticed I only used the <code>+</code> operator until now? That’s because there’s something we cannot replicate with our concepts solution: <strong>we cannot replace CRTP’s member functions</strong>.</p>
+<p>Suppose we want a <code>norm</code> function, to determine the length of the vector. With CRTP, we have it both ways: it can be a member function, or it can be a free function.</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">template</span>&lt;<span class="keyword">typename</span> Derived&gt;</span><br><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">Vector</span> &#123;</span></span><br><span class="line">    <span class="keyword">auto</span> <span class="keyword">operator</span>+(<span class="keyword">const</span> Derived&amp; other) <span class="keyword">const</span> <span class="keyword">noexcept</span> &#123;<span class="comment">/* ... */</span>&#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// Free function, as a hidden friend</span></span><br><span class="line">    <span class="function"><span class="keyword">friend</span> <span class="keyword">auto</span> <span class="title">norm</span><span class="params">(<span class="keyword">const</span> Derived&amp; self)</span> <span class="keyword">noexcept</span> </span>&#123;</span><br><span class="line">        <span class="keyword">auto</span> norm_sq = self.x * self.x + self.y * self.y;</span><br><span class="line">        <span class="function"><span class="keyword">if</span> <span class="title">constexpr</span><span class="params">(<span class="keyword">requires</span>&#123; self.z; &#125;)</span> </span>&#123;</span><br><span class="line">            norm_sq += self.z + self.z;</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="keyword">return</span> <span class="built_in">std</span>::<span class="built_in">sqrt</span>(norm_sq);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// Member function</span></span><br><span class="line">    <span class="function"><span class="keyword">auto</span> <span class="title">norm</span><span class="params">()</span> <span class="keyword">const</span> <span class="keyword">noexcept</span> </span>&#123;</span><br><span class="line">        <span class="keyword">auto</span>&amp; self = *<span class="keyword">static_cast</span>&lt;<span class="keyword">const</span> Derived*&gt;(<span class="keyword">this</span>);</span><br><span class="line">        <span class="keyword">return</span> norm(self); <span class="comment">// Slideware notice: can&#x27;t compile here.</span></span><br><span class="line">    &#125;</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+
+<p>With concepts, we cannot inject a member function. So, we need to use the free function:</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">auto</span> <span class="title">norm</span><span class="params">(<span class="keyword">const</span> <span class="built_in">vector</span> <span class="keyword">auto</span>&amp; self)</span> <span class="keyword">noexcept</span> </span>&#123;</span><br><span class="line">    <span class="keyword">auto</span> norm_sq = self.x * self.x + self.y * self.y;</span><br><span class="line">    <span class="function"><span class="keyword">if</span> <span class="title">constexpr</span><span class="params">(<span class="keyword">requires</span>&#123; self.z; &#125;)</span> </span>&#123;</span><br><span class="line">        norm_sq += self.z + self.z;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">return</span> <span class="built_in">std</span>::<span class="built_in">sqrt</span>(norm_sq);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>You can see on Compiler explorer: <a target="_blank" rel="noopener" href="https://godbolt.org/z/xf5xr3f9z">CRTP implementation</a>; <a target="_blank" rel="noopener" href="https://godbolt.org/z/YseGjje5n">Concepts implementation</a>.</p>
+<h1 id="issue-3-argument-dependent-lookup"><a name="issue-3-argument-dependent-lookup" href="#issue-3-argument-dependent-lookup" class="headerlink" title="Link to &quot;Issue #3: Argument-dependent lookup&quot;">🔗</a>Issue #3: Argument-dependent lookup</h1><p>Suppose our user now wants to create their own class, and utilize our interface. They will obviously use their own </p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// Declaring a Vector3f class inside another namespace</span></span><br><span class="line"><span class="keyword">namespace</span> userlib &#123;</span><br><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">Vector3f</span> &#123;</span></span><br><span class="line">    <span class="keyword">float</span> x;</span><br><span class="line">    <span class="keyword">float</span> y;</span><br><span class="line">    <span class="keyword">float</span> z;</span><br><span class="line">&#125;;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">// Correctly opting-in into our concept</span></span><br><span class="line"><span class="keyword">template</span>&lt;&gt; <span class="keyword">inline</span> <span class="keyword">constexpr</span> <span class="keyword">bool</span> mylib::is_vector&lt;userlib::Vector3f&gt; = <span class="literal">true</span>;</span><br></pre></td></tr></table></figure>
+
+<p>Our user can then try to use the interface they just declared valid:</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">main</span><span class="params">()</span></span>&#123;</span><br><span class="line">    userlib::Vector3f v&#123;<span class="number">1</span>, <span class="number">0</span>, <span class="number">1</span>&#125;;</span><br><span class="line">    <span class="keyword">float</span> n = norm(v);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>Then, our user faces error messages from all compilers. </p>
+<p>From GCC:
+<code>error: &#39;norm&#39; was not declared in this scope; did you mean &#39;mylib::norm&#39;?</code></p>
+<p>From Clang:
+<code>error: use of undeclared identifier &#39;norm&#39;; did you mean &#39;mylib::norm&#39;?</code></p>
+<p>And MSVC:
+<code>error C3861: &#39;norm&#39;: identifier not found</code></p>
+<p>This happens because, until now, we’ve been depending on everybody’s favorite: <strong>Argument-dependent lookup (ADL)</strong>. For this issue, we could just follow the compiler’s suggestion and make it work.</p>
+<p>But forcing the user of derived class to know where the function is located is bad. What if we want to provide an iterator interface to make our class a range? We can’t change the standard algorithms to use <code>mylib::begin</code>. We need to fix this.</p>
+<p>We can try to have a minimal effort </p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// We declare this in our library</span></span><br><span class="line"><span class="keyword">namespace</span> mylib::vector_functions &#123;</span><br><span class="line"></span><br><span class="line"><span class="keyword">using</span> mylib::norm;</span><br><span class="line"><span class="keyword">using</span> mylib::<span class="keyword">operator</span>+;</span><br><span class="line"></span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="keyword">namespace</span> userlib &#123;</span><br><span class="line"></span><br><span class="line"><span class="comment">// The user then imports all functions into their namespace</span></span><br><span class="line"><span class="keyword">using</span> <span class="keyword">namespace</span> mylib::vector_functions;</span><br><span class="line"></span><br><span class="line">&#125;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>It would be fine to do that, except ADL explicitly avoids this kind of operation. So, if our user wants ADL, they need to import each individual function into their namespace:</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">namespace</span> userlib &#123;</span><br><span class="line">    <span class="keyword">using</span> mylib::norm;</span><br><span class="line">    <span class="keyword">using</span> mylib::<span class="keyword">operator</span>+;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>But, if they forget a single one, the interface is broken. We have no elegant solution for that. All we have are workarounds:</p>
+<p><strong>1. Using macros to enable ADL</strong></p>
+<p>We can provide the user a macro with every function in our library:</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">define</span> IMPORT_VECTOR_FUNCTIONS() \</span></span><br><span class="line">    <span class="keyword">using</span> ::mylib::norm; \</span><br><span class="line">    <span class="keyword">using</span> ::mylib::<span class="keyword">operator</span>+</span><br></pre></td></tr></table></figure>
+
+<p>Then, the user can just call it into their namespace:</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">namespace</span> userlib &#123;</span><br><span class="line"></span><br><span class="line">IMPORT_VECTOR_FUNCTIONS();</span><br><span class="line"></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>It works (<a target="_blank" rel="noopener" href="https://godbolt.org/z/sKTK58vYh">Compiler Explorer link</a>), but, again, it’s far from elegant.</p>
+<p><strong>2. Putting our functions into the global namespace</strong></p>
+<p>Yes, our functions are limited to an opt-in concept, so we could try doing that without issues. No, still don’t do that.</p>
+<h1 id="so-is-it-all-issues-is-there-any-advantage-in-using-concepts-over-crtp"><a name="so-is-it-all-issues-is-there-any-advantage-in-using-concepts-over-crtp" href="#so-is-it-all-issues-is-there-any-advantage-in-using-concepts-over-crtp" class="headerlink" title="Link to &quot;So is it all issues? Is there any advantage in using concepts over CRTP?&quot;">🔗</a>So is it all issues? Is there any advantage in using concepts over CRTP?</h1><p>One of the issues with CRTP we’ve discussed in the beginning was it destroying our aggregate types. This doesn’t happen with concepts, which are non-invasive.</p>
+<p>But there are other ways the use of concepts can be beneficial to our interfaces. Let’s see some of them:</p>
+<h2 id="advantage-2-using-our-interface-with-third-party-classes"><a name="advantage-2-using-our-interface-with-third-party-classes" href="#advantage-2-using-our-interface-with-third-party-classes" class="headerlink" title="Link to &quot;Advantage #2: Using our interface with third-party classes&quot;">🔗</a>Advantage #2: Using our interface with third-party classes</h2><p>When ADL is not a problem, we can use the CRTP interfaces with any class we want, as long as it satisfies our constraints.</p>
+<p>For example, we can do (<a target="_blank" rel="noopener" href="https://godbolt.org/z/dqEEdeT5d">Compiler Explorer Link</a>):</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">template</span>&lt;&gt; <span class="keyword">inline</span> <span class="keyword">constexpr</span> <span class="keyword">bool</span> mylib::is_vector&lt;a_c_vector&gt; = <span class="literal">true</span>;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">auto</span> <span class="title">do_operation</span><span class="params">(<span class="keyword">const</span> a_c_vector&amp; vec, <span class="keyword">const</span> a_c_vector&amp; vec2)</span></span>&#123;</span><br><span class="line">    <span class="keyword">using</span> <span class="keyword">namespace</span> mylib;</span><br><span class="line">    <span class="keyword">return</span> norm(vec + vec2);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><strong>Note</strong>: notice I’ve said “when ADL is not a problem”. We don’t want to import our functions into the <code>std::</code> namespace to get ADL, for instance, as it’s undefined behavior.</p>
+<h2 id="advantage-3-verifying-the-full-interface-at-declaration-time"><a name="advantage-3-verifying-the-full-interface-at-declaration-time" href="#advantage-3-verifying-the-full-interface-at-declaration-time" class="headerlink" title="Link to &quot;Advantage #3: Verifying the full interface at declaration time&quot;">🔗</a>Advantage #3: Verifying the full interface at declaration time</h2><p>In order to understand how concepts can help here, we must first analyze how errors are detected in CRTP:</p>
+<h3 id="limiting-crtp-to-only-accept-valid-input"><a name="limiting-crtp-to-only-accept-valid-input" href="#limiting-crtp-to-only-accept-valid-input" class="headerlink" title="Link to &quot;Limiting CRTP to only accept valid input&quot;">🔗</a>Limiting CRTP to only accept valid input</h3><p>The first thing we need to understand is the order our declarations and definitions happen.</p>
+<p>1. If we try to instantiate a derived class with a forward-declared base CRTP class, we have an error: <code>Base</code> is an incomplete type.</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">template</span>&lt;<span class="keyword">typename</span> Derived&gt;</span><br><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">Base</span>;</span></span><br><span class="line"></span><br><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">MyDerived</span> :</span> Base&lt;MyDerived&gt; &#123;&#125;;</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>2. If we try to access anything from the derived class in a declaration inside the base, now the error is <code>Derived</code> is incomplete. At the point of the evaluation, we still haven’t gotten into the first declaration inside the derived class.</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">template</span>&lt;<span class="keyword">typename</span> Derived&gt;</span><br><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">Base</span> &#123;</span></span><br><span class="line">    <span class="keyword">static_assert</span>(<span class="keyword">sizeof</span>(Derived) != <span class="number">0</span>); <span class="comment">// Error: Derived is incomplete.</span></span><br><span class="line">&#125;;</span><br><span class="line"></span><br><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">MyDerived</span> :</span> Base&lt;MyDerived&gt; &#123;&#125;;</span><br></pre></td></tr></table></figure>
+
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">template</span>&lt;<span class="keyword">typename</span> Derived&gt;</span><br><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">Base</span> &#123;</span></span><br><span class="line">    <span class="function"><span class="keyword">auto</span> <span class="title">something_else</span><span class="params">()</span> </span></span><br><span class="line">       -&gt; decltype(static_cast&lt;Derived*&gt;(this)-&gt;something()); // Still incomplete.</span><br><span class="line">&#125;;</span><br><span class="line"></span><br><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">MyDerived</span> :</span> Base&lt;MyDerived&gt; &#123;</span><br><span class="line">    <span class="function"><span class="keyword">int</span> <span class="title">something</span><span class="params">()</span></span>;</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+
+<p>3. We can declare everything in our base and derived class, and define later. This code is fine:</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">template</span>&lt;<span class="keyword">typename</span> Derived&gt;</span><br><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">Base</span> &#123;</span></span><br><span class="line">    <span class="function"><span class="keyword">auto</span> <span class="title">something_else</span><span class="params">()</span></span>;</span><br><span class="line">&#125;;</span><br><span class="line"></span><br><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">MyDerived</span> :</span> Base&lt;MyDerived&gt; &#123;</span><br><span class="line">    <span class="function"><span class="keyword">int</span> <span class="title">something</span><span class="params">()</span></span>;</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+
+<p>4. Inside the definition of functions inside the base class, we can access any property of the derived, even if we define the function inside the class definition:</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">template</span>&lt;<span class="keyword">typename</span> Derived&gt;</span><br><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">Base</span> &#123;</span></span><br><span class="line">    <span class="function"><span class="keyword">auto</span> <span class="title">something_else</span><span class="params">()</span></span>&#123;</span><br><span class="line">        <span class="keyword">static_assert</span>(<span class="keyword">sizeof</span>(Derived) != <span class="number">0</span>);</span><br><span class="line">        <span class="keyword">return</span> <span class="keyword">static_cast</span>&lt;Derived*&gt;(<span class="keyword">this</span>)-&gt;something();</span><br><span class="line">    &#125;</span><br><span class="line">&#125;;</span><br><span class="line"></span><br><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">MyDerived</span> :</span> Base&lt;MyDerived&gt; &#123;</span><br><span class="line">    <span class="function"><span class="keyword">int</span> <span class="title">something</span><span class="params">()</span></span>;</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+
+<p>5. The body of the functions inside the base class will only be instantiated on the first use. So, if we have an error, e.g. asserting the size of our derived class is 0, it will still compile at this point:</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">template</span>&lt;<span class="keyword">typename</span> Derived&gt;</span><br><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">Base</span> &#123;</span></span><br><span class="line">    <span class="function"><span class="keyword">auto</span> <span class="title">something_else</span><span class="params">()</span></span>&#123;</span><br><span class="line">        <span class="keyword">static_assert</span>(<span class="keyword">sizeof</span>(Derived) == <span class="number">0</span>);</span><br><span class="line">        <span class="keyword">return</span> <span class="keyword">static_cast</span>&lt;Derived*&gt;(<span class="keyword">this</span>)-&gt;something();</span><br><span class="line">    &#125;</span><br><span class="line">&#125;;</span><br><span class="line"></span><br><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">MyDerived</span> :</span> Base&lt;MyDerived&gt; &#123;</span><br><span class="line">    <span class="function"><span class="keyword">int</span> <span class="title">something</span><span class="params">()</span></span>;</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+
+<p>Only when we use it, it will be instantiated and the code will fail:</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">main</span><span class="params">()</span></span>&#123;</span><br><span class="line">    MyDerived&#123;&#125;.something_else(); <span class="comment">// Fails at this moment</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>So we have an issue: we can <code>static_assert</code> all we want, and provide pretty error messages for every situation we can imagine. But the user won’t see it at the moment of opt-in: it may have a bug that only shows up very, very late!</p>
+<h3 id="making-a-concept-yield-an-error-when-opting-in"><a name="making-a-concept-yield-an-error-when-opting-in" href="#making-a-concept-yield-an-error-when-opting-in" class="headerlink" title="Link to &quot;Making a concept yield an error when opting in&quot;">🔗</a>Making a concept yield an error when opting in</h3><p>In our vector example, our <code>vector</code> concept was very simple. For instance, <code>Vector3f</code> is a <code>vector2d</code>, and we wouldn’t want that. Some other errors that could happen include:</p>
+<ul>
+<li><code>x</code>, <code>y</code> and <code>z</code> aren’t numbers</li>
+<li><code>x</code>, <code>y</code> and <code>z</code> aren’t the same type</li>
+<li><code>sizeof(T) != sizeof(x)*dimensions</code></li>
+<li><code>T</code> isn’t constructible as <code>T&#123;x,y,z&#125;</code></li>
+<li>etc.</li>
+</ul>
+<p>The earlier we can catch these errors, the better. Otherwise, we have the same issue as CRTP. So, let’s redefine our concepts:</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">template</span>&lt;<span class="keyword">typename</span> T&gt;</span><br><span class="line"><span class="keyword">concept</span> vector2d = <span class="keyword">requires</span>(T vec)&#123;</span><br><span class="line">    <span class="comment">// We require that vec.x and vec.y are valid expressions</span></span><br><span class="line">    vec.x;</span><br><span class="line">    vec.y;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// We require that x is a number (there seems to be no concept for that, so we use a type trait)</span></span><br><span class="line">    <span class="keyword">requires</span> <span class="built_in">std</span>::is_arithmetic_v&lt;<span class="keyword">decltype</span>(vec.x)&gt;;</span><br><span class="line">    <span class="comment">// And that y is the same type</span></span><br><span class="line">    <span class="keyword">requires</span> <span class="built_in">std</span>::same_as&lt;<span class="keyword">decltype</span>(vec.x), <span class="keyword">decltype</span>(vec.y)&gt;;</span><br><span class="line">    <span class="comment">// And that the type is composed by only x and y (assuming no weird alignment stuff)</span></span><br><span class="line">    <span class="function"><span class="keyword">requires</span> <span class="title">sizeof</span><span class="params">(vec)</span> </span>== <span class="keyword">sizeof</span>(vec.x) * <span class="number">2</span>;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// We require that constructing a T from x and y is a valid expression</span></span><br><span class="line">    T&#123;vec.x, vec.y&#125;;</span><br><span class="line">&#125;;</span><br><span class="line"></span><br><span class="line"><span class="comment">// Then we repeat the same logic, but for 3 members</span></span><br><span class="line"><span class="keyword">template</span>&lt;<span class="keyword">typename</span> T&gt;</span><br><span class="line"><span class="keyword">concept</span> vector3d = <span class="keyword">requires</span>(T vec)&#123;</span><br><span class="line">    vec.x;</span><br><span class="line">    vec.y;</span><br><span class="line">    vec.z;</span><br><span class="line">    <span class="keyword">requires</span> <span class="built_in">std</span>::is_arithmetic_v&lt;<span class="keyword">decltype</span>(vec.x)&gt;;</span><br><span class="line">    <span class="keyword">requires</span> <span class="built_in">std</span>::same_as&lt;<span class="keyword">decltype</span>(vec.x), <span class="keyword">decltype</span>(vec.y)&gt;;</span><br><span class="line">    <span class="keyword">requires</span> <span class="built_in">std</span>::same_as&lt;<span class="keyword">decltype</span>(vec.x), <span class="keyword">decltype</span>(vec.z)&gt;;</span><br><span class="line">    <span class="function"><span class="keyword">requires</span> <span class="title">sizeof</span><span class="params">(vec)</span> </span>== <span class="keyword">sizeof</span>(vec.x) * <span class="number">3</span>;</span><br><span class="line">    T&#123;vec.x, vec.y, vec.z&#125;;</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+
+<p>Now, if we try to <strong>use</strong> the interface functions on the following class, they should fail (spoiler: they do — <a target="_blank" rel="noopener" href="https://godbolt.org/z/arM65WT9h">Compiler Explorer link</a>):</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">namespace</span> mylib&#123;</span><br><span class="line"></span><br><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">Vector2_err</span> &#123;</span></span><br><span class="line">    <span class="keyword">float</span> x;</span><br><span class="line">    <span class="keyword">double</span> y;</span><br><span class="line">&#125;;</span><br><span class="line"></span><br><span class="line"><span class="keyword">template</span>&lt;&gt; <span class="keyword">inline</span> <span class="keyword">constexpr</span> <span class="keyword">bool</span> is_vector&lt;Vector2_err&gt; = <span class="literal">true</span>;</span><br><span class="line"></span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">main</span><span class="params">()</span></span>&#123;</span><br><span class="line">    mylib::Vector2_err v1&#123;<span class="number">1</span>, <span class="number">0</span>&#125;;</span><br><span class="line">    mylib::Vector2_err v2&#123;<span class="number">0</span>, <span class="number">1</span>&#125;;</span><br><span class="line">    <span class="comment">// Compiles fine up until here</span></span><br><span class="line"></span><br><span class="line">    v1 + v2; <span class="comment">// Error on instantiation, like CRTP!</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>I’ve promised we can do better than CRTP, so let’s see how we can do better:</p>
+<ol>
+<li>Create an intermediate concept, that utilizes our <code>vector2d</code> and <code>vector3d</code> concepts, without the need to opt-in</li>
+<li>Restrict our opt-in variable <code>is_vector</code> with such concept</li>
+<li>Redefine our <code>vector</code> concept to use only <code>is_vector</code></li>
+</ol>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">template</span>&lt;<span class="keyword">typename</span> T&gt;</span><br><span class="line"><span class="keyword">concept</span> vector_interface = vector2d&lt;T&gt; || vector3d&lt;T&gt;;</span><br><span class="line"></span><br><span class="line"><span class="keyword">template</span>&lt;vector_interface T&gt;</span><br><span class="line"><span class="keyword">inline</span> <span class="keyword">constexpr</span> <span class="keyword">bool</span> is_vector = <span class="literal">false</span>;</span><br><span class="line"></span><br><span class="line"><span class="keyword">template</span>&lt;<span class="keyword">typename</span> T&gt;</span><br><span class="line"><span class="keyword">concept</span> <span class="built_in">vector</span> = is_vector&lt;T&gt;;</span><br></pre></td></tr></table></figure>
+
+<p><strong>And it works</strong>! Well… 2/3 of the time. Current implementation of GCC only checks that the specialization is invalid if we instantiate the specialization. Clang and MSVC yield the error we’d expect: (<a target="_blank" rel="noopener" href="https://godbolt.org/z/z6noGbv3h">Compiler Explorer link</a>) (to be more exact, one of them yields a beautiful well-explained error we’d expect, the other one is MSVC).</p>
+<h1 id="comparing-both-solutions"><a name="comparing-both-solutions" href="#comparing-both-solutions" class="headerlink" title="Link to &quot;Comparing both solutions&quot;">🔗</a>Comparing both solutions</h1><p>Here’s a succinct table, comparing both techniques:</p>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>CRTP</th>
+<th>Concepts</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Opt-in</td>
+<td>✔️</td>
+<td>✔️</td>
+</tr>
+<tr>
+<td>Operator overloading</td>
+<td>✔️</td>
+<td>✔️</td>
+</tr>
+<tr>
+<td>Free functions</td>
+<td>✔️</td>
+<td>✔️</td>
+</tr>
+<tr>
+<td>Member functions and conversion operators</td>
+<td>✔️</td>
+<td>❌</td>
+</tr>
+<tr>
+<td>Opt-in for third-party classes</td>
+<td>❌</td>
+<td>✔️</td>
+</tr>
+<tr>
+<td>Argument-Dependent Lookup (ADL)</td>
+<td>✔️</td>
+<td>❌/✔️ <sup>(it’s bad)</sup></td>
+</tr>
+<tr>
+<td>Non-intrusive aggregate types</td>
+<td>❌</td>
+<td>✔️</td>
+</tr>
+<tr>
+<td>Interface verification on declaration</td>
+<td>❌</td>
+<td>✔️</td>
+</tr>
+<tr>
+<td>Friendly messages for interface errors</td>
+<td>✔️ <sup>with <code>static_assert</code></sup></td>
+<td>❌/✔️ <sup>compiler-dependent</sup></td>
+</tr>
+</tbody></table>
+<h1 id="conclusion"><a name="conclusion" href="#conclusion" class="headerlink" title="Link to &quot;Conclusion&quot;">🔗</a>Conclusion</h1><p>Concepts can be used as replacements for CRTP, and even provide cleaner interfaces in some aspects.
+However, not being able to provide member functions turns this entire experiment a useless trivia feature for many users.</p>
+<p>You can definitely use this technique if all of these apply to your CRTP implementation:</p>
+<ul>
+<li>Classes are in the same namespace as the concept or you don’t mind importing multiple functions into your namespace</li>
+<li>All of your interface’s functions are free functions or operators that can be implemented as free functions</li>
+</ul>
+<p>In most cases, it’s safer to stay with good ol’ CRTP, at least for now.</p>
+<p>C++ has had numerous Unified [Function] Call Syntax (UCS/UFCS) proposals, though not a single one has moved forward in the standardization process (See Barry Revzin’s post on the history of UFCS: <a target="_blank" rel="noopener" href="https://brevzin.github.io/c++/2019/04/13/ufcs-history/">What is unified function call syntax anyway?</a>). If we ever get UFCS into the language, concepts might be a viable replacement for CRTP in more applications.</p>
+<p>If you’ve reached this far, thank you for reading. I hope you’ve learned something new; I sure have. As always, if I’m wrong, don’t hesitate to correct me! You can find me <a target="_blank" rel="noopener" href="https://twitter.com/_JoelFilho">on twitter</a>, on the CppLang Slack, and you can also <a target="_blank" rel="noopener" href="https://github.com/JoelFilho/JoelFilho.github.io/issues/new">open an issue on this blog’s repository</a>!</p>
+
+      
+    </div>
+    <footer class="article-footer">
+      <a data-url="https://joelfilho.com/blog/2021/emulating_crtp_with_cpp_concepts/" data-id="ckpwhayth00007ufh32mbavxu" data-title="Using C++20&#39;s concepts as a CRTP alternative: a viable replacement?" class="article-share-link">Share</a>
+      
+      
+      
+  <ul class="article-tag-list" itemprop="keywords"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/c/" rel="tag">c++</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/concepts/" rel="tag">concepts</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/experiments/" rel="tag">experiments</a></li></ul>
+
+    </footer>
+  </div>
+  
+    
+<nav id="article-nav">
+  
+  
+    <a href="/blog/2020/compile_time_lookup_tables_in_cpp/" id="article-nav-older" class="article-nav-link-wrap">
+      <strong class="article-nav-caption">Older</strong>
+      <div class="article-nav-title">The evolution of constexpr: compile-time lookup tables in C++</div>
+    </a>
+  
+</nav>
+
+  
+</article>
+
+
+</section>
+        
+          <aside id="sidebar">
+  
+    
+  <div class="widget-wrap">
+    <h3 class="widget-title">Tags</h3>
+    <div class="widget">
+      <ul class="tag-list" itemprop="keywords"><li class="tag-list-item"><a class="tag-list-link" href="/tags/c/" rel="tag">c++</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/compile-time/" rel="tag">compile-time</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/concepts/" rel="tag">concepts</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/experiments/" rel="tag">experiments</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/language-evolution/" rel="tag">language-evolution</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/language-tips/" rel="tag">language-tips</a></li></ul>
+    </div>
+  </div>
+
+
+  
+    
+  <div class="widget-wrap">
+    <h3 class="widget-title">Recent Posts</h3>
+    <div class="widget">
+      <ul>
+        
+          <li>
+            <a href="/blog/2021/emulating_crtp_with_cpp_concepts/">Using C++20&#39;s concepts as a CRTP alternative: a viable replacement?</a>
+          </li>
+        
+          <li>
+            <a href="/blog/2020/compile_time_lookup_tables_in_cpp/">The evolution of constexpr: compile-time lookup tables in C++</a>
+          </li>
+        
+          <li>
+            <a href="/blog/2020/forwarding_references/">Forwarding References? Forwardable References! (or: don&#39;t use std::forward just because you can)</a>
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+
+  
+</aside>
+        
+      </div>
+      <footer id="footer">
+  
+  <div class="outer">
+    <div id="footer-info" class="inner">
+      
+      &copy; 2021 Joel Filho<br>
+      Powered by <a href="https://hexo.io/" target="_blank">Hexo</a>
+    </div>
+  </div>
+</footer>
+
+    </div>
+    <nav id="mobile-nav">
+  
+    <a href="/" class="mobile-nav-link">Home</a>
+  
+    <a href="/archives" class="mobile-nav-link">Archives</a>
+  
+    <a target="_blank" rel="noopener" href="https://twitter.com/_JoelFilho" class="mobile-nav-link">Twitter</a>
+  
+    <a target="_blank" rel="noopener" href="https://github.com/JoelFilho" class="mobile-nav-link">GitHub</a>
+  
+</nav>
+    
+
+
+<script src="/js/jquery-3.4.1.min.js"></script>
+
+
+
+  
+<script src="/fancybox/jquery.fancybox.min.js"></script>
+
+
+
+
+<script src="/js/script.js"></script>
+
+
+
+
+
+  </div>
+</body>
+</html>

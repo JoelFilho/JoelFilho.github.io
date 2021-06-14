@@ -6,7 +6,7 @@
   <link href="https://joelfilho.com/atom.xml" rel="self"/>
   
   <link href="https://joelfilho.com/"/>
-  <updated>2020-11-15T03:58:00.000Z</updated>
+  <updated>2021-06-14T10:40:00.000Z</updated>
   <id>https://joelfilho.com/</id>
   
   <author>
@@ -15,6 +15,36 @@
   </author>
   
   <generator uri="https://hexo.io/">Hexo</generator>
+  
+  <entry>
+    <title>Using C++20&#39;s concepts as a CRTP alternative: a viable replacement?</title>
+    <link href="https://joelfilho.com/blog/2021/emulating_crtp_with_cpp_concepts/"/>
+    <id>https://joelfilho.com/blog/2021/emulating_crtp_with_cpp_concepts/</id>
+    <published>2021-06-14T10:40:00.000Z</published>
+    <updated>2021-06-14T10:40:00.000Z</updated>
+    
+    
+    <summary type="html">&lt;p&gt;A few months ago, a user asked on Reddit &lt;a href=&quot;https://www.reddit.com/r/cpp/comments/kcinhu/how_suitable_are_concepts_for_use_as_a/&quot;&gt;“How suitable are concepts for use as a replacement for CRTP interfaces?”&lt;/a&gt;. The main conclusion of the discussion was that concepts were designed to constrain, not for what CRTP is used.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;But what is CRTP used for?&lt;/strong&gt; CRTP (Curiously Recurring Template Pattern) is a way of providing compile-time polymorphism through inheritance.
+It’s commonly used to extend functionality of a derived class, using some required implementation details provided by it.
+The main idea behind CRTP is:&lt;/p&gt;
+&lt;figure class=&quot;highlight c++&quot;&gt;&lt;table&gt;&lt;tr&gt;&lt;td class=&quot;gutter&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;1&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;2&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;3&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;4&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;5&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;6&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;7&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;8&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;9&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;10&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;11&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;12&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;13&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;14&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;15&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;16&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;17&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;18&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;19&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;20&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;21&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;22&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;23&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;24&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;td class=&quot;code&quot;&gt;&lt;pre&gt;&lt;span class=&quot;line&quot;&gt;&lt;span class=&quot;comment&quot;&gt;// 1. We have a Base class template that utilizes a Derived template parameter&lt;/span&gt;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;&lt;span class=&quot;keyword&quot;&gt;template&lt;/span&gt;&amp;lt;&lt;span class=&quot;keyword&quot;&gt;typename&lt;/span&gt; Derived&amp;gt;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;&lt;span class=&quot;class&quot;&gt;&lt;span class=&quot;keyword&quot;&gt;struct&lt;/span&gt; &lt;span class=&quot;title&quot;&gt;Base&lt;/span&gt; &amp;#123;&lt;/span&gt;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;    &lt;span class=&quot;comment&quot;&gt;// 2. We also have a public interface that our derived class wants to provide&lt;/span&gt;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;    &lt;span class=&quot;function&quot;&gt;&lt;span class=&quot;keyword&quot;&gt;auto&lt;/span&gt; &lt;span class=&quot;title&quot;&gt;public_behavior&lt;/span&gt;&lt;span class=&quot;params&quot;&gt;()&lt;/span&gt;&lt;/span&gt;&amp;#123;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;        &lt;span class=&quot;comment&quot;&gt;// 3. We can safely cast the this pointer to the Derived class&lt;/span&gt;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;        &lt;span class=&quot;keyword&quot;&gt;auto&lt;/span&gt;&amp;amp; self = *&lt;span class=&quot;keyword&quot;&gt;static_cast&lt;/span&gt;&amp;lt;Derived*&amp;gt;(&lt;span class=&quot;keyword&quot;&gt;this&lt;/span&gt;);&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;        &lt;span class=&quot;comment&quot;&gt;// 4. We then use the required provided behavior from the base class, and give our base behavior&lt;/span&gt;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;        &lt;span class=&quot;keyword&quot;&gt;return&lt;/span&gt; do_something(self.provided_behavior());&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;    &amp;#125;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;&amp;#125;;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;&lt;span class=&quot;comment&quot;&gt;// 5. We can have a derived class that inherits from Base, using itself as template parameter.&lt;/span&gt;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;&lt;span class=&quot;comment&quot;&gt;//    Notice it uses public inheritance, since we want to provide a public interface&lt;/span&gt;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;&lt;span class=&quot;class&quot;&gt;&lt;span class=&quot;keyword&quot;&gt;struct&lt;/span&gt; &lt;span class=&quot;title&quot;&gt;MyDerived&lt;/span&gt; :&lt;/span&gt; Base&amp;lt;MyDerived&amp;gt; &amp;#123;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;    &lt;span class=&quot;comment&quot;&gt;// 6. And then we provide the interface that the base class requires&lt;/span&gt;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;    &lt;span class=&quot;function&quot;&gt;&lt;span class=&quot;keyword&quot;&gt;auto&lt;/span&gt; &lt;span class=&quot;title&quot;&gt;provided_behavior&lt;/span&gt;&lt;span class=&quot;params&quot;&gt;()&lt;/span&gt; &lt;/span&gt;&amp;#123; &lt;span class=&quot;comment&quot;&gt;/*...*/&lt;/span&gt; &amp;#125;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;&amp;#125;;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;&lt;span class=&quot;comment&quot;&gt;// 7. We can just invoke the public behavior, and no one using it needs to know it uses CRTP.&lt;/span&gt;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;MyDerived object;&lt;/span&gt;&lt;br&gt;&lt;span class=&quot;line&quot;&gt;object.public_behavior();&lt;/span&gt;&lt;br&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;&lt;/figure&gt;
+
+&lt;p&gt;Code reuse can be seen as CRTP’s most important feature, as per Daisy Hollman’s &lt;a href=&quot;https://www.youtube.com/watch?v=g89ZfEwqAXE&quot;&gt;“Thoughts on Curiously Recurring Template Pattern” lightning talk&lt;/a&gt;, since we can write the base class once, and inherit from it to implement the interface without repeating ourselves.&lt;/p&gt;
+&lt;p&gt;One real-world example of how it’s done is on the Standard library, and standardized on C++20 (which means CRTP is far from an outdated technique!): &lt;a href=&quot;https://en.cppreference.com/w/cpp/ranges/view_interface&quot;&gt;&lt;code&gt;std::ranges::view_interface&lt;/code&gt;&lt;/a&gt;. With just two public member functions, we can provide a vast interface with CRTP!&lt;/p&gt;
+&lt;p&gt;But the question is: &lt;strong&gt;can we emulate the behavior of CRTP without using inheritance?&lt;/strong&gt;&lt;/p&gt;
+&lt;p&gt;Let’s go to the point: the short answer is yes, but there are some caveats. So, let’s explore an example and verify some issues we can encounter:&lt;/p&gt;</summary>
+    
+    
+    
+    
+    <category term="c++" scheme="https://joelfilho.com/tags/c/"/>
+    
+    <category term="experiments" scheme="https://joelfilho.com/tags/experiments/"/>
+    
+    <category term="concepts" scheme="https://joelfilho.com/tags/concepts/"/>
+    
+  </entry>
   
   <entry>
     <title>The evolution of constexpr: compile-time lookup tables in C++</title>
