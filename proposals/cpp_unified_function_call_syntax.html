@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  
+  
+  <title>Another take at this Unified Call Syntax Thing | Joel Filho</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+  <meta name="description" content="Author Joel P. C. Filho   Audience EWGI      C++, as a multi-paradigm programming language, allows its users to define two kinds of functions: member functions and free functions. The beauty">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Another take at this Unified Call Syntax Thing">
+<meta property="og:url" content="https://joelfilho.com/proposals/cpp_unified_function_call_syntax">
+<meta property="og:site_name" content="Joel Filho">
+<meta property="og:description" content="Author Joel P. C. Filho   Audience EWGI      C++, as a multi-paradigm programming language, allows its users to define two kinds of functions: member functions and free functions. The beauty">
+<meta property="og:locale" content="en_US">
+<meta property="article:published_time" content="2021-06-19T07:00:00.000Z">
+<meta property="article:author" content="Joel Filho">
+<meta property="article:tag" content="C++, Embedded Systems, Modern C++">
+<meta name="twitter:card" content="summary">
+  
+    <link rel="alternate" href="/atom.xml" title="Joel Filho" type="application/atom+xml">
+  
+  
+    <link rel="shortcut icon" href="/favicon.png">
+  
+  
+    
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/typeface-source-code-pro@0.0.71/index.min.css">
+
+  
+  
+<link rel="stylesheet" href="/css/style.css">
+
+  
+    
+<link rel="stylesheet" href="/fancybox/jquery.fancybox.min.css">
+
+  
+<meta name="generator" content="Hexo 5.2.0"></head>
+
+<body>
+  <div id="container">
+    <div id="wrap">
+      <header id="header">
+  <div id="banner"></div>
+  <div id="header-outer" class="outer">
+    <div id="header-title" class="inner">
+      <h1 id="logo-wrap">
+        <a href="/" id="logo">Joel Filho</a>
+      </h1>
+      
+        <h2 id="subtitle-wrap">
+          <a href="/" id="subtitle">Modern C++ &amp; Embedded Systems</a>
+        </h2>
+      
+    </div>
+    <div id="header-inner" class="inner">
+      <nav id="main-nav">
+        <a id="main-nav-toggle" class="nav-icon"></a>
+        
+          <a class="main-nav-link" href="/">Home</a>
+        
+          <a class="main-nav-link" href="/archives">Archives</a>
+        
+          <a class="main-nav-link" target="_blank" rel="noopener" href="https://twitter.com/_JoelFilho">Twitter</a>
+        
+          <a class="main-nav-link" target="_blank" rel="noopener" href="https://github.com/JoelFilho">GitHub</a>
+        
+      </nav>
+      <nav id="sub-nav">
+        
+          <a id="nav-rss-link" class="nav-icon" href="/atom.xml" title="RSS Feed"></a>
+        
+        <a id="nav-search-btn" class="nav-icon" title="Search"></a>
+      </nav>
+      <div id="search-form-wrap">
+        <form action="//google.com/search" method="get" accept-charset="UTF-8" class="search-form"><input type="search" name="q" class="search-form-input" placeholder="Search"><button type="submit" class="search-form-submit">&#xF002;</button><input type="hidden" name="sitesearch" value="https://JoelFilho.com"></form>
+      </div>
+    </div>
+  </div>
+</header>
+
+      <div class="outer">
+        <section id="main"><article id="page-" class="h-entry article article-type-page" itemprop="blogPost" itemscope itemtype="https://schema.org/BlogPosting">
+  <div class="article-meta">
+    <a href="/proposals/cpp_unified_function_call_syntax" class="article-date">
+  <time class="dt-published" datetime="2021-06-19T07:00:00.000Z" itemprop="datePublished">June 19, 2021</time>
+</a>
+    
+  </div>
+  <div class="article-inner">
+    
+    
+      <header class="article-header">
+        
+  
+    <h1 class="p-name article-title" itemprop="headline name">
+      Another take at this Unified Call Syntax Thing
+    </h1>
+  
+
+      </header>
+    
+    <div class="e-content article-entry" itemprop="articleBody">
+      
+        <span style="width:49%; float:right;">
+
+<table>
+<thead>
+<tr>
+<th></th>
+<th></th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Author</strong></td>
+<td><a target="_blank" rel="noopener" href="https://twitter.com/_JoelFilho">Joel P. C. Filho</a></td>
+</tr>
+<tr>
+<td><strong>Audience</strong></td>
+<td>EWGI</td>
+</tr>
+</tbody></table>
+</span>
+<div style="display:block; clear:both"></div>
+
+<p>C++, as a multi-paradigm programming language, allows its users to define two kinds of functions: member functions and free functions.
+The beauty of the language is that, no matter which side one prefers, they can use it.
+Except, of course, when an opinionated library does not use their preferred way of doing that.</p>
+<p>The idea of a Unified Call Syntax (<strong>UCS</strong>, sometimes called Uniform) is to allow users to call a function with either syntax,
+regardless of how it was declared.</p>
+<p>Without a UCS, we’ve been using of artifacts to emulate the desired behavior, e.g. <code>std::begin</code>:</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">auto std::begin(auto&amp; range) -&gt; decltype(range.begin()) &#123;</span><br><span class="line">	<span class="keyword">return</span> range.begin();</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><strong>Without UCS</strong></p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">auto</span> <span class="title">my_begin</span><span class="params">(<span class="keyword">auto</span>&amp; x)</span> </span>&#123;</span><br><span class="line">	<span class="comment">// We need to import this to guarantee we find a begin function</span></span><br><span class="line">	<span class="keyword">using</span> <span class="built_in">std</span>::begin;</span><br><span class="line">	<span class="comment">// Then, ADL is performed, and, if not available, we call std::begin, which calls in.begin</span></span><br><span class="line">	<span class="keyword">return</span> begin(x);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><strong>With UCS</strong></p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">auto</span> <span class="title">my_begin</span><span class="params">(<span class="keyword">auto</span>&amp; x)</span> </span>&#123;</span><br><span class="line">	<span class="comment">// Automatically call x.begin(), because this call is equivalent</span></span><br><span class="line">	<span class="comment">// if begin(x) also exists, we need to define a rule to resolve the ambiguity</span></span><br><span class="line">	<span class="keyword">return</span> begin(x);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>We can also observe this behavior on other Standard functions, such as <code>std::swap</code>‘s specializations, which invokes <code>a.swap(b)</code>
+member functions of the Standard containers. This creates inconsistent interfaces between libraries, making the life of
+the user harder than it needs to be.</p>
+<p>The introduction of UCS into C++ is something that has been sought with no success by many, including Bjarne Stroustrup, 
+the creator of the language. Meanwhile, other systems programming languages, without 40 years of legacy, have successfully 
+implemented unified function call syntaxes.</p>
+<p>By previous committee responses, it’s clear that ambiguous code or a syntax that breaks any current code are undesirable.
+So, at this point, we should accept that <code>x.begin()</code> being equivalent to <code>begin(x)</code> may be never happening in C++.
+We should also have some understanding that the semantics must be clear, and possible ambiguities should be eliminated.</p>
+<p>Therefore, this paper proposes a new <em>unified call operator</em>, in order to maintain full backwards compatibility with previous version of the code.
+Additionally, the proposal includes an attempt to define the behavior of each possible use case of the operator.</p>
+<p>As this paper is presented to incubation, the focus is on defining behavior and syntax, while specific wording is omitted.</p>
+<h2 id="on-the-goal-of-this-proposal-who-benefits-from-ucs"><a name="on-the-goal-of-this-proposal-who-benefits-from-ucs" href="#on-the-goal-of-this-proposal-who-benefits-from-ucs" class="headerlink" title="Link to &quot;On the goal of this proposal: Who benefits from UCS?&quot;">🔗</a>On the goal of this proposal: Who benefits from UCS?</h2><p>Generic code benefits the most from an UCS, by not needing to specialize to multiple situations.
+Therefore, library writers are the main public for an UCS.</p>
+<p>However, by introducing a new syntax for unified calls, we not only provide a new tool for generic programming,
+but also an opt-in mechanism for any C++ developer who wishes to take advantage of the functionality.</p>
+<h2 id="the-proposed-syntax"><a name="the-proposed-syntax" href="#the-proposed-syntax" class="headerlink" title="Link to &quot;The proposed syntax&quot;">🔗</a>The proposed syntax</h2><p>The proposed syntax utilizes an operator <code>!()</code>, called the <em>Unified Call Operator</em> (<strong>UCO</strong>), e.g.:</p>
+<ul>
+<li><code>f!(x)</code></li>
+<li><code>x.f!()</code></li>
+<li><code>x-&gt;f!()</code></li>
+</ul>
+<p>The UCO is proposed as a non-overloadable operator, which performs the unified call operation on the function named <code>f</code>.
+The syntax was chosen with the intent of not creating confusion between unified calls and the current model.
+Other languages utilize this syntax for other function-like calls, thus it’s a practical syntax.</p>
+<p>Each of the specified UCO uses has rules, depending on the kind of the call. The unified calls can be categorized as:</p>
+<ul>
+<li><code>f!(x, args...)</code> - Unified Free Function Call</li>
+<li><code>x.f!(args...)</code> - Unified Referencing Member Function Call</li>
+<li><code>x-&gt;f!(args...)</code> - Unified Dereferencing Member Function Call</li>
+</ul>
+<p>The following subsections present the intended behavior for each of these categories:</p>
+<h3 id="unified-free-function-call"><a name="unified-free-function-call" href="#unified-free-function-call" class="headerlink" title="Link to &quot;Unified Free Function Call&quot;">🔗</a>Unified Free Function Call</h3><p><code>f!(x, args...)</code>‘s translation process by the compiler is given as follows:</p>
+<ol>
+<li>If <code>f(x, args...)</code> is well-formed, it’s equivalent to it, with the usual argument-dependent lookup (ADL) rules</li>
+<li>Otherwise, it becomes a call to <code>x.f(args...)</code>, if well-formed</li>
+<li>Otherwise, the program is ill-formed</li>
+</ol>
+<p>The feature is implementable as syntactic sugar with an immediately-invoked lambda expression.
+For instance, this ruleset may be implemented by the compiler as:</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// f!(x, args...):</span></span><br><span class="line">[](<span class="keyword">auto</span>&amp;&amp; __x, <span class="keyword">auto</span>&amp;&amp;... __args) <span class="keyword">constexpr</span></span><br><span class="line">  <span class="keyword">noexcept</span>(</span><br><span class="line">	[]() <span class="keyword">constexpr</span> &#123;</span><br><span class="line">		<span class="keyword">if</span> <span class="keyword">constexpr</span>(<span class="keyword">requires</span>&#123;f(<span class="built_in">std</span>::forward&lt;<span class="keyword">decltype</span>(__x)&gt;(__x), <span class="built_in">std</span>::forward&lt;<span class="keyword">decltype</span>(__args)&gt;(__args)...);&#125;)&#123;</span><br><span class="line">			<span class="keyword">return</span> <span class="keyword">noexcept</span>(f(<span class="built_in">std</span>::forward&lt;<span class="keyword">decltype</span>(__x)&gt;(__x), <span class="built_in">std</span>::forward&lt;<span class="keyword">decltype</span>(__args)&gt;(__args)...));</span><br><span class="line">		&#125; <span class="keyword">else</span> <span class="keyword">if</span> <span class="keyword">constexpr</span>(<span class="keyword">requires</span>&#123;<span class="built_in">std</span>::forward&lt;<span class="keyword">decltype</span>(__x)&gt;(__x).f(<span class="built_in">std</span>::forward&lt;<span class="keyword">decltype</span>(__args)&gt;(__args)...);&#125;)&#123;</span><br><span class="line">			<span class="keyword">return</span> <span class="keyword">noexcept</span>(<span class="built_in">std</span>::forward&lt;<span class="keyword">decltype</span>(__x)&gt;(__x).f(<span class="built_in">std</span>::forward&lt;<span class="keyword">decltype</span>(__args)&gt;(__args)...));</span><br><span class="line">		&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">			<span class="keyword">return</span> <span class="literal">true</span>; <span class="comment">// Not returning a boolean here already yields a compile-time error</span></span><br><span class="line">		&#125;</span><br><span class="line">	&#125;()</span><br><span class="line">  )</span><br><span class="line">&#123;</span><br><span class="line">	<span class="function"><span class="keyword">if</span> <span class="title">constexpr</span><span class="params">(<span class="keyword">requires</span>&#123;f(<span class="built_in">std</span>::forward&lt;<span class="keyword">decltype</span>(__x)&gt;(__x), <span class="built_in">std</span>::forward&lt;<span class="keyword">decltype</span>(__args)&gt;(__args)...);&#125;)</span></span>&#123;</span><br><span class="line">		<span class="keyword">return</span> f(<span class="built_in">std</span>::forward&lt;<span class="keyword">decltype</span>(__x)&gt;(__x), <span class="built_in">std</span>::forward&lt;<span class="keyword">decltype</span>(__args)&gt;(__args)...);</span><br><span class="line">	&#125; <span class="keyword">else</span> <span class="keyword">if</span> <span class="keyword">constexpr</span>(<span class="keyword">requires</span>&#123;<span class="built_in">std</span>::forward&lt;<span class="keyword">decltype</span>(__x)&gt;(__x).f(<span class="built_in">std</span>::forward&lt;<span class="keyword">decltype</span>(__args)&gt;(__args)...);&#125;)&#123;</span><br><span class="line">		<span class="keyword">return</span> <span class="built_in">std</span>::forward&lt;<span class="keyword">decltype</span>(__x)&gt;(__x).f(<span class="built_in">std</span>::forward&lt;<span class="keyword">decltype</span>(__args)&gt;(__args)...);</span><br><span class="line">	&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">        <span class="comment">// Give us std::static_error with constexpr std::format!</span></span><br><span class="line">		__implementation_defined_compile_time_error(<span class="string">&quot;function_name&quot;</span>, __x, __args...);</span><br><span class="line">	&#125;</span><br><span class="line">&#125; (x, args...)</span><br></pre></td></tr></table></figure>
+
+<p>For flexibility and to allow optimizations of compiler speed, we may declare the functionality is implemented <em>as if</em> the 
+syntactic sugar was implemented. The unified member function calls can also be specified in a similar manner.</p>
+<p><strong>Note</strong>: As an optional addition for this proposal, it may also try to instantiate a call to <code>x-&gt;f(args...)</code> . 
+However, it may introduce unnecessary complexity, therefore it was not proposed in this paper. 
+For example, when using a smart pointer, a user may be inclined to think all unified calls are done to the contained object, 
+while it’s not true if the function also exists on the pointer class.</p>
+<h3 id="unified-referencing-member-function-call"><a name="unified-referencing-member-function-call" href="#unified-referencing-member-function-call" class="headerlink" title="Link to &quot;Unified Referencing Member Function Call&quot;">🔗</a>Unified Referencing Member Function Call</h3><p><code>x.f!(args...)</code>‘s process is just the inverse of the free function call:</p>
+<ol>
+<li>If <code>x.f(args...)</code> is well-formed, it’s equivalent to it</li>
+<li>Otherwise, it becomes a call to <code>f(x, args...)</code>, with the usual argument-dependent lookup rules, if well-formed</li>
+<li>Otherwise, the program is ill-formed</li>
+</ol>
+<h3 id="unified-dereferencing-member-function-call"><a name="unified-dereferencing-member-function-call" href="#unified-dereferencing-member-function-call" class="headerlink" title="Link to &quot;Unified Dereferencing Member Function Call&quot;">🔗</a>Unified Dereferencing Member Function Call</h3><p><code>x-&gt;f!(args...)</code>‘s requires dereferencing <code>x</code>. The basic interpretation is:</p>
+<ol>
+<li>If <code>x-&gt;f(args...)</code> is well-formed, it’s equivalent to it</li>
+<li>Otherwise, it becomes a call to <code>f(*x, args...)</code>, with the usual argument-dependent lookup rules, if well-formed</li>
+<li>Otherwise, the program is ill-formed</li>
+</ol>
+<h3 id="function-calls-with-template-arguments"><a name="function-calls-with-template-arguments" href="#function-calls-with-template-arguments" class="headerlink" title="Link to &quot;Function calls with template arguments&quot;">🔗</a>Function calls with template arguments</h3><p>Utilizing the UCO in a function call with explicit template parameters should be valid:</p>
+<ul>
+<li><code>f&lt;T...&gt;!(x, args...)</code></li>
+<li><code>x.f&lt;T...&gt;!(args...)</code></li>
+<li><code>x-&gt;f&lt;T...&gt;!(args...)</code></li>
+</ul>
+<p>These cases follow the same rules as the non-template ones, but capturing the function name and template parameters together.</p>
+<h3 id="chaining"><a name="chaining" href="#chaining" class="headerlink" title="Link to &quot;Chaining&quot;">🔗</a>Chaining</h3><p>Chaining is supported, and works as their non-unified counterparts.</p>
+<ul>
+<li><code>x.f!().g!()</code> is equivalent to <code>(x.f!()).g!()</code></li>
+<li><code>f!(g!(x))</code> is allowed</li>
+</ul>
+<h3 id="special-cases"><a name="special-cases" href="#special-cases" class="headerlink" title="Link to &quot;Special cases&quot;">🔗</a>Special cases</h3><p>There are some special cases that should be explicitly forbidden.
+A program should be ill-formed if:</p>
+<ol>
+<li>The function calls a destructor, e.g. <code>x-&gt;~T!()</code><ul>
+<li><em>Reason</em>: destructor are special member functions, and cannot be free functions. 
+Therefore, it is unnecessary to add this special case to correct behavior.</li>
+</ul>
+</li>
+<li>Pointer-to-member function call is attempted, e.g. <code>x.*f!()</code><ul>
+<li><em>Reason</em>: Like the destructor, <code>f</code> cannot be a free function. Therefore, it also is unnecessary.</li>
+</ul>
+</li>
+<li>Function name is qualified, e.g. <code>ns::f!(x)</code><ul>
+<li><em>Reason</em>: By qualifying the function call, it’s not generic code, and would require the compiler to generate an
+unqualified name for the member function. <code>using ns::f;</code> is more explicit, and less ambiguous about the possibility 
+of <code>x.f</code> being contained outside <code>ns</code>.</li>
+<li><em>Note</em>: Using a function call on a qualified name is acceptable, e.g. <code>std::cout.f!()</code> may call <code>f(std::cout)</code></li>
+</ul>
+</li>
+<li>There are no arguments on the free function call, e.g. <code>f!()</code><ul>
+<li><em>Reason</em>: There is no unification or ADL to be done. We should maintain the default call instead.</li>
+</ul>
+</li>
+</ol>
+<p>There are other special cases, with suggested solutions, which may require further discussion:</p>
+<h3 id="constructor-calls"><a name="constructor-calls" href="#constructor-calls" class="headerlink" title="Link to &quot;Constructor calls&quot;">🔗</a>Constructor calls</h3><p>Using the current syntactic sugar model, this code compiles, calling the move constructor in both occasions:</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">S</span>&#123;</span>&#125;;</span><br><span class="line">S!(S&#123;&#125;);</span><br><span class="line">S&#123;&#125;.S!();</span><br></pre></td></tr></table></figure>
+
+<p>Similarly, this is currently well-formed, calling <code>unique_ptr&lt;int&gt;(x)</code>:</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">int</span> *x &#123;&#125;;</span><br><span class="line"><span class="keyword">using</span> ptr = <span class="built_in">std</span>::<span class="built_in">unique_ptr</span>&lt;<span class="keyword">int</span>&gt;;</span><br><span class="line">x.ptr!();</span><br><span class="line">ptr!(x);</span><br></pre></td></tr></table></figure>
+
+<p>There are at least two solutions to this issue:</p>
+<ol>
+<li>It’s a feature, not a bug!</li>
+<li>The program is ill-formed if calling <code>f!</code> would only be valid if it resulted in a call to a constructor of a class type <code>f</code></li>
+<li>If <code>f</code> is a type name, the program is ill-formed</li>
+</ol>
+<p><em>Author’s opinion</em>: #2, even though it breaks the current syntactic sugar model, it’s clearer on what’s allowed or not.
+It’s probably better than #3, because we may have member functions that are named as some types.</p>
+<h3 id="dereferencing-member-function-call"><a name="dereferencing-member-function-call" href="#dereferencing-member-function-call" class="headerlink" title="Link to &quot;Dereferencing Member Function Call&quot;">🔗</a>Dereferencing Member Function Call</h3><p>Previously, we defined the rules for the <code>x-&gt;f!(args...)</code> case.</p>
+<p>However, if <code>x</code> is a class type and it does not overload the unary operator <code>*</code>, while overloading operator <code>-&gt;</code>, it fails.
+We may either:</p>
+<ol>
+<li>Force dereferencing semantics, where <code>*x</code> and <code>x.operator-&gt;()</code> are <em>always</em> equivalent</li>
+<li>Change the behavior to try to instantiate <code>f(*(x.operator-&gt;()), args...)</code> first, then <code>f(*x, args...)</code></li>
+</ol>
+<p><em>Author’s opinion</em>: Forcing language semantics is not bad in this case, but, as the fix is trivial, it’s perfectly acceptable
+to choose #2.</p>
+<h3 id="literals"><a name="literals" href="#literals" class="headerlink" title="Link to &quot;Literals&quot;">🔗</a>Literals</h3><p>By this point, we’ve only assumed the proposed UCS accepts member function calls in fundamental non-class types.
+This would mean that someone may try to do this:</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="number">1.f</span>!(); <span class="comment">// Trying to call f on a double</span></span><br><span class="line"><span class="number">1.f</span>.f!(); <span class="comment">// Trying to calll f on a float</span></span><br></pre></td></tr></table></figure>
+
+<p>While the second case is already solved, as it is ill-formed and requires a space between the first <code>f</code> and the second point, 
+the first one may be wrongfully parsed as <code>1.f</code> followed by <code>!()</code>, i.e. trying to do a unified function call to <code>1.0f</code>, which is ill-formed.</p>
+<p>Options for solving this issue include:</p>
+<ol>
+<li>Introduce a lookahead requirement, so <code>f</code> is considered a unified call, before being consumed as a <code>float</code> literal (or any user-defined literal)</li>
+<li>Always require a space between any literal, with or without suffix, and the function call</li>
+<li>Forbid using non-class types with member function call operator, at the cost of disabling various generic code options</li>
+</ol>
+<p><em>Author’s opinion</em>: since the alternative interpretation is ill-formed, and #1 is implementable with constant look-ahead, 
+it may be the best, most flexible choice.</p>
+<h3 id="operators"><a name="operators" href="#operators" class="headerlink" title="Link to &quot;Operators&quot;">🔗</a>Operators</h3><p>It may be possible that the UCO is used in an operator call, e.g. <code>x.operator&gt;&gt;!(y)</code>.
+The functionality is already built-in into the language, and it’s used as though they were a unified call.</p>
+<p>However, there are corner cases where it may be relevant, e.g. if the programmer is utilizing an operator call with explicit template arguments.
+For example:</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">x.<span class="keyword">template</span> <span class="keyword">operator</span>&gt;&gt;&lt;T2&gt;!(y);</span><br></pre></td></tr></table></figure>
+
+<p>If utilized, the transformed name is <code>template operator&gt;&gt;&lt;T2&gt;</code> for the member function alternatives being checked, 
+and <code>operator&gt;&gt;&lt;T2&gt;</code> for the free function one. Since it utilizes two different names for the function, it also changes our syntactic sugar model.</p>
+<p><em>Author’s opinion</em>: Cursed code should burn in hell. We should not support this.</p>
+<h2 id="conclusion"><a name="conclusion" href="#conclusion" class="headerlink" title="Link to &quot;Conclusion&quot;">🔗</a>Conclusion</h2><p>This paper proposes the introduction of the operator <code>!()</code>, the <em>Unified Call Operator</em>, in order to enable an
+opt-in and backwards-compatible unified call syntax.</p>
+<p><strong>Without Unified Call Syntax</strong></p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">auto</span> <span class="title">my_begin</span><span class="params">(<span class="keyword">auto</span>&amp; x)</span> </span>&#123;</span><br><span class="line">	<span class="comment">// We need to import this to guarantee we find a begin function</span></span><br><span class="line">	<span class="keyword">using</span> <span class="built_in">std</span>::begin;</span><br><span class="line">	<span class="comment">// Then, ADL is performed, and, if not available, we call std::begin, which calls in.begin</span></span><br><span class="line">	<span class="keyword">return</span> begin(x);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><strong>With Unified Call Operator</strong></p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">auto</span> <span class="title">my_begin</span><span class="params">(<span class="keyword">auto</span>&amp; x)</span> </span>&#123;</span><br><span class="line">	<span class="comment">// Automatically call begin(x). If not defined, call x.begin();</span></span><br><span class="line">	<span class="keyword">return</span> begin!(x);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>x.f!()</code> and <code>f!(x)</code> have different, but clear, semantics: </p>
+<ul>
+<li>Prioritize call as written (as if by removing the <code>!</code>)</li>
+<li>Only call the alternative if not able to call as written</li>
+</ul>
+<p>Or, when using <a target="_blank" rel="noopener" href="https://brevzin.github.io/c++/2019/04/13/ufcs-history/">Revzin’s classification method</a>:</p>
+<ul>
+<li>Candidate Set: Any finds Any<ul>
+<li>(But only if using the Unified Call Operator)</li>
+</ul>
+</li>
+<li>Overload Resolution: Two Rounds, Prefer As Written<ul>
+<li>(Without breaking existing code, as we have new syntax for explicit unified function call)</li>
+</ul>
+</li>
+</ul>
+<p>When compared to previous proposals:</p>
+<ul>
+<li>✔️ Behavior is opt-in by the caller</li>
+<li>✔️ Syntax is unambiguous</li>
+<li>✔️ Code being added should not break legacy code<ul>
+<li>❌ Behavior can change between compilations, when adding a second call option with different behavior</li>
+</ul>
+</li>
+<li>❌ Not as simple as just calling as we’ve always done</li>
+<li>❌ Better for library writers than general users<ul>
+<li>✔️ Eliminates the need to write <code>std::begin</code>-like functions for every name needed</li>
+</ul>
+</li>
+<li>✔️ Unlike <a target="_blank" rel="noopener" href="https://wg21.link/p0301r1">P0301R1</a>, which also introduces an opt-in mechanism, gives the control of resolution priority to the caller</li>
+</ul>
+
+      
+    </div>
+    <footer class="article-footer">
+      <a data-url="https://joelfilho.com/proposals/cpp_unified_function_call_syntax" data-id="ckq3e8xyl00006ffh5xop9ymj" data-title="Another take at this Unified Call Syntax Thing" class="article-share-link">Share</a>
+      
+      
+      
+    </footer>
+  </div>
+  
+    
+  
+</article>
+
+
+</section>
+        
+          <aside id="sidebar">
+  
+    
+  <div class="widget-wrap">
+    <h3 class="widget-title">Tags</h3>
+    <div class="widget">
+      <ul class="tag-list" itemprop="keywords"><li class="tag-list-item"><a class="tag-list-link" href="/tags/c/" rel="tag">c++</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/compile-time/" rel="tag">compile-time</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/concepts/" rel="tag">concepts</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/experiments/" rel="tag">experiments</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/language-evolution/" rel="tag">language-evolution</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/language-tips/" rel="tag">language-tips</a></li></ul>
+    </div>
+  </div>
+
+
+  
+    
+  <div class="widget-wrap">
+    <h3 class="widget-title">Recent Posts</h3>
+    <div class="widget">
+      <ul>
+        
+          <li>
+            <a href="/blog/2021/emulating_crtp_with_cpp_concepts/">Using C++20&#39;s concepts as a CRTP alternative: a viable replacement?</a>
+          </li>
+        
+          <li>
+            <a href="/blog/2020/compile_time_lookup_tables_in_cpp/">The evolution of constexpr: compile-time lookup tables in C++</a>
+          </li>
+        
+          <li>
+            <a href="/blog/2020/forwarding_references/">Forwarding References? Forwardable References! (or: don&#39;t use std::forward just because you can)</a>
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+
+  
+</aside>
+        
+      </div>
+      <footer id="footer">
+  
+  <div class="outer">
+    <div id="footer-info" class="inner">
+      
+      &copy; 2021 Joel Filho<br>
+      Powered by <a href="https://hexo.io/" target="_blank">Hexo</a>
+    </div>
+  </div>
+</footer>
+
+    </div>
+    <nav id="mobile-nav">
+  
+    <a href="/" class="mobile-nav-link">Home</a>
+  
+    <a href="/archives" class="mobile-nav-link">Archives</a>
+  
+    <a target="_blank" rel="noopener" href="https://twitter.com/_JoelFilho" class="mobile-nav-link">Twitter</a>
+  
+    <a target="_blank" rel="noopener" href="https://github.com/JoelFilho" class="mobile-nav-link">GitHub</a>
+  
+</nav>
+    
+
+
+<script src="/js/jquery-3.4.1.min.js"></script>
+
+
+
+  
+<script src="/fancybox/jquery.fancybox.min.js"></script>
+
+
+
+
+<script src="/js/script.js"></script>
+
+
+
+
+
+  </div>
+</body>
+</html>
