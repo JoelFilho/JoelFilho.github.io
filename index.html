@@ -6,7 +6,8 @@
   
   <title>Joel Filho</title>
   <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-  <meta name="description" content="A blog about Embedded Systems development in Modern C++">
+  
+      <meta name="description" content="A blog about Embedded Systems development in Modern C++">
 <meta property="og:type" content="website">
 <meta property="og:title" content="Joel Filho">
 <meta property="og:url" content="https://joelfilho.com/">
@@ -16,6 +17,8 @@
 <meta property="article:author" content="Joel Filho">
 <meta property="article:tag" content="C++, Embedded Systems, Modern C++">
 <meta name="twitter:card" content="summary">
+  
+
   
     <link rel="alternate" href="/atom.xml" title="Joel Filho" type="application/atom+xml">
   
@@ -81,6 +84,75 @@
 
       <div class="outer">
         <section id="main">
+  
+    <article id="post-interrupt_guards_c_cpp" class="h-entry article article-type-post" itemprop="blogPost" itemscope itemtype="https://schema.org/BlogPosting">
+  <div class="article-meta">
+    <a href="/blog/2021/interrupt_guards_c_cpp/" class="article-date">
+  <time class="dt-published" datetime="2021-06-28T10:40:00.000Z" itemprop="datePublished">June 28, 2021</time>
+</a>
+    
+  </div>
+  <div class="article-inner">
+    
+    
+      <header class="article-header">
+        
+  
+    <h1 itemprop="name">
+      <a class="p-name article-title" href="/blog/2021/interrupt_guards_c_cpp/">ISR Contexts in Embedded C and C++ — Selecting the correct function at compile time</a>
+    </h1>
+  
+
+      </header>
+    
+    <div class="e-content article-entry" itemprop="articleBody">
+      
+        <p>Interrupt handling is an important part of embedded systems development: 
+it allows separating application logic from peripheral interfacing, while removing the need for polling and allowing real-time operations of peripherals.</p>
+<p>With interrupt handling in mind, the library may add functionality that requires different implementation while inside an interrupt context.
+Alternatively, a library function may require checks and calls when running outside an interrupt.</p>
+<p>The rule of thumb for interrupt handling is <em>the faster, the better</em>. <strong>This usually rules out automatic context detection at runtime</strong>.
+So, library writers generate two versions of the same function, optimizing for the context where they’re executed.</p>
+<p>One example of an API that extensively uses of this technique is <a target="_blank" rel="noopener" href="https://www.freertos.org/a00106.html">FreeRTOS’s API</a>. 
+We can take its Timer API as an example, which provides many pairs of these functions:</p>
+<ul>
+<li><code>xTimerStart</code> / <code>xTimerStartFromISR</code></li>
+<li><code>xTimerStop</code> / <code>xTimerStopFromISR</code></li>
+<li><code>xTimerChangePeriod</code> / <code>xTimerChangePeriodFromISR</code></li>
+<li><code>xTimerReset</code> / <code>xTimerResetFromISR</code></li>
+<li><code>xTimerPendFunctionCall</code> / <code>xTimerPendFunctionCallFromISR</code></li>
+</ul>
+<p>But this approach has some issues:</p>
+<ul>
+<li>A user depends on an IDE or documentation to know if a <code>FromISR</code> function even exists</li>
+<li>If a free function does not have the <code>FromISR</code> suffix, does it mean it’s interrupt-safe or not?<ul>
+<li>Do we really expect a programmer to access documentation to verify if a call is valid in a specific context?</li>
+</ul>
+</li>
+</ul>
+<p>It’s 2021, we can do better than that. In this article, we’ll explore <em>4 ways</em> of improving an interface like that with C++.</p>
+<p><strong>But wait, there’s more</strong>: for those who won’t/can’t use C++, we’ll also see 2 ways of doing this with C!</p>
+        
+          <p class="article-more-link">
+            <a href="/blog/2021/interrupt_guards_c_cpp/#more">Continue Reading...</a>
+          </p>
+        
+      
+    </div>
+    <footer class="article-footer">
+      <a data-url="https://joelfilho.com/blog/2021/interrupt_guards_c_cpp/" data-id="ckqggpazu00008kfh0qx01aof" data-title="ISR Contexts in Embedded C and C++ — Selecting the correct function at compile time" class="article-share-link">Share</a>
+      
+      
+      
+  <ul class="article-tag-list" itemprop="keywords"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/c/" rel="tag">c</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/c/" rel="tag">c++</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/compile-time/" rel="tag">compile-time</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/embedded/" rel="tag">embedded</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/experiments/" rel="tag">experiments</a></li></ul>
+
+    </footer>
+  </div>
+  
+</article>
+
+
+
   
     <article id="post-emulating_crtp_with_cpp_concepts" class="h-entry article article-type-post" itemprop="blogPost" itemscope itemtype="https://schema.org/BlogPosting">
   <div class="article-meta">
@@ -250,7 +322,7 @@ When working with them, we’ve been taught to use <code>std::forward</code>. Af
   <div class="widget-wrap">
     <h3 class="widget-title">Tags</h3>
     <div class="widget">
-      <ul class="tag-list" itemprop="keywords"><li class="tag-list-item"><a class="tag-list-link" href="/tags/c/" rel="tag">c++</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/compile-time/" rel="tag">compile-time</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/concepts/" rel="tag">concepts</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/experiments/" rel="tag">experiments</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/language-evolution/" rel="tag">language-evolution</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/language-tips/" rel="tag">language-tips</a></li></ul>
+      <ul class="tag-list" itemprop="keywords"><li class="tag-list-item"><a class="tag-list-link" href="/tags/c/" rel="tag">c</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/c/" rel="tag">c++</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/compile-time/" rel="tag">compile-time</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/concepts/" rel="tag">concepts</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/embedded/" rel="tag">embedded</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/experiments/" rel="tag">experiments</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/language-evolution/" rel="tag">language-evolution</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/language-tips/" rel="tag">language-tips</a></li></ul>
     </div>
   </div>
 
@@ -261,6 +333,10 @@ When working with them, we’ve been taught to use <code>std::forward</code>. Af
     <h3 class="widget-title">Recent Posts</h3>
     <div class="widget">
       <ul>
+        
+          <li>
+            <a href="/blog/2021/interrupt_guards_c_cpp/">ISR Contexts in Embedded C and C++ — Selecting the correct function at compile time</a>
+          </li>
         
           <li>
             <a href="/blog/2021/emulating_crtp_with_cpp_concepts/">Using C++20&#39;s concepts as a CRTP alternative: a viable replacement?</a>

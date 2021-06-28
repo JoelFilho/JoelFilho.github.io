@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  
+  
+  <title>ISR Contexts in Embedded C and C++ — Selecting the correct function at compile time | Joel Filho</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+  
+        <meta name="description" content="Interrupt handling is an important part of embedded systems development:  it allows separating application logic from peripheral interfacing, while removing the need for polling and allowing real-time">
+<meta property="og:type" content="article">
+<meta property="og:title" content="ISR Contexts in Embedded C and C++ — Selecting the correct function at compile time">
+<meta property="og:url" content="https://joelfilho.com/blog/2021/interrupt_guards_c_cpp/">
+<meta property="og:site_name" content="Joel Filho">
+<meta property="og:description" content="Interrupt handling is an important part of embedded systems development:  it allows separating application logic from peripheral interfacing, while removing the need for polling and allowing real-time">
+<meta property="og:locale" content="en_US">
+<meta property="og:image" content="https://joelfilho.com/images/interrupt_guards_thumb.png">
+<meta property="article:published_time" content="2021-06-28T10:40:00.000Z">
+<meta property="article:author" content="Joel Filho">
+<meta property="article:tag" content="c++">
+<meta property="article:tag" content="compile-time">
+<meta property="article:tag" content="experiments">
+<meta property="article:tag" content="embedded">
+<meta property="article:tag" content="c">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://joelfilho.com/images/interrupt_guards_thumb.png">
+  
+
+  
+    <link rel="alternate" href="/atom.xml" title="Joel Filho" type="application/atom+xml">
+  
+  
+    <link rel="shortcut icon" href="/favicon.png">
+  
+  
+    
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/typeface-source-code-pro@0.0.71/index.min.css">
+
+  
+  
+<link rel="stylesheet" href="/css/style.css">
+
+  
+    
+<link rel="stylesheet" href="/fancybox/jquery.fancybox.min.css">
+
+  
+<meta name="generator" content="Hexo 5.2.0"></head>
+
+<body>
+  <div id="container">
+    <div id="wrap">
+      <header id="header">
+  <div id="banner"></div>
+  <div id="header-outer" class="outer">
+    <div id="header-title" class="inner">
+      <h1 id="logo-wrap">
+        <a href="/" id="logo">Joel Filho</a>
+      </h1>
+      
+        <h2 id="subtitle-wrap">
+          <a href="/" id="subtitle">Modern C++ &amp; Embedded Systems</a>
+        </h2>
+      
+    </div>
+    <div id="header-inner" class="inner">
+      <nav id="main-nav">
+        <a id="main-nav-toggle" class="nav-icon"></a>
+        
+          <a class="main-nav-link" href="/">Home</a>
+        
+          <a class="main-nav-link" href="/archives">Archives</a>
+        
+          <a class="main-nav-link" target="_blank" rel="noopener" href="https://twitter.com/_JoelFilho">Twitter</a>
+        
+          <a class="main-nav-link" target="_blank" rel="noopener" href="https://github.com/JoelFilho">GitHub</a>
+        
+      </nav>
+      <nav id="sub-nav">
+        
+          <a id="nav-rss-link" class="nav-icon" href="/atom.xml" title="RSS Feed"></a>
+        
+        <a id="nav-search-btn" class="nav-icon" title="Search"></a>
+      </nav>
+      <div id="search-form-wrap">
+        <form action="//google.com/search" method="get" accept-charset="UTF-8" class="search-form"><input type="search" name="q" class="search-form-input" placeholder="Search"><button type="submit" class="search-form-submit">&#xF002;</button><input type="hidden" name="sitesearch" value="https://JoelFilho.com"></form>
+      </div>
+    </div>
+  </div>
+</header>
+
+      <div class="outer">
+        <section id="main"><article id="post-interrupt_guards_c_cpp" class="h-entry article article-type-post" itemprop="blogPost" itemscope itemtype="https://schema.org/BlogPosting">
+  <div class="article-meta">
+    <a href="/blog/2021/interrupt_guards_c_cpp/" class="article-date">
+  <time class="dt-published" datetime="2021-06-28T10:40:00.000Z" itemprop="datePublished">June 28, 2021</time>
+</a>
+    
+  </div>
+  <div class="article-inner">
+    
+    
+      <header class="article-header">
+        
+  
+    <h1 class="p-name article-title" itemprop="headline name">
+      ISR Contexts in Embedded C and C++ — Selecting the correct function at compile time
+    </h1>
+  
+
+      </header>
+    
+    <div class="e-content article-entry" itemprop="articleBody">
+      
+        <p>Interrupt handling is an important part of embedded systems development: 
+it allows separating application logic from peripheral interfacing, while removing the need for polling and allowing real-time operations of peripherals.</p>
+<p>With interrupt handling in mind, the library may add functionality that requires different implementation while inside an interrupt context.
+Alternatively, a library function may require checks and calls when running outside an interrupt.</p>
+<p>The rule of thumb for interrupt handling is <em>the faster, the better</em>. <strong>This usually rules out automatic context detection at runtime</strong>.
+So, library writers generate two versions of the same function, optimizing for the context where they’re executed.</p>
+<p>One example of an API that extensively uses of this technique is <a target="_blank" rel="noopener" href="https://www.freertos.org/a00106.html">FreeRTOS’s API</a>. 
+We can take its Timer API as an example, which provides many pairs of these functions:</p>
+<ul>
+<li><code>xTimerStart</code> / <code>xTimerStartFromISR</code></li>
+<li><code>xTimerStop</code> / <code>xTimerStopFromISR</code></li>
+<li><code>xTimerChangePeriod</code> / <code>xTimerChangePeriodFromISR</code></li>
+<li><code>xTimerReset</code> / <code>xTimerResetFromISR</code></li>
+<li><code>xTimerPendFunctionCall</code> / <code>xTimerPendFunctionCallFromISR</code></li>
+</ul>
+<p>But this approach has some issues:</p>
+<ul>
+<li>A user depends on an IDE or documentation to know if a <code>FromISR</code> function even exists</li>
+<li>If a free function does not have the <code>FromISR</code> suffix, does it mean it’s interrupt-safe or not?<ul>
+<li>Do we really expect a programmer to access documentation to verify if a call is valid in a specific context?</li>
+</ul>
+</li>
+</ul>
+<p>It’s 2021, we can do better than that. In this article, we’ll explore <em>4 ways</em> of improving an interface like that with C++.</p>
+<p><strong>But wait, there’s more</strong>: for those who won’t/can’t use C++, we’ll also see 2 ways of doing this with C!</p>
+<a id="more"></a>
+
+<h2 id="our-example-wrapping-a-queue-interface-written-in-c"><a name="our-example-wrapping-a-queue-interface-written-in-c" href="#our-example-wrapping-a-queue-interface-written-in-c" class="headerlink" title="Link to &quot;Our example: Wrapping a queue interface written in C&quot;">🔗</a>Our example: Wrapping a queue interface written in C</h2><p>Instead of creating a new API for every technique, we’ll wrap this fictional C API:</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// Our handle type.</span></span><br><span class="line"><span class="keyword">typedef</span> <span class="class"><span class="keyword">struct</span> <span class="title">queue_handle_t</span> /* &#123;</span>...&#125; */ <span class="keyword">queue_handle_t</span>;</span><br><span class="line"></span><br><span class="line"><span class="comment">// Creation and Deletion</span></span><br><span class="line"><span class="comment">// DO NOT USE INSIDE INTERRUPT!</span></span><br><span class="line"><span class="function"><span class="keyword">queue_handle_t</span> <span class="title">Queue_create</span><span class="params">()</span></span>;</span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">Queue_delete</span><span class="params">(<span class="keyword">queue_handle_t</span>* handle)</span></span>;</span><br><span class="line"></span><br><span class="line"><span class="comment">// Fine to use anywhere</span></span><br><span class="line"><span class="function"><span class="keyword">bool</span> <span class="title">Queue_empty</span><span class="params">(<span class="keyword">const</span> <span class="keyword">queue_handle_t</span>* handle)</span></span>;</span><br><span class="line"><span class="function"><span class="keyword">bool</span> <span class="title">Queue_full</span><span class="params">(<span class="keyword">const</span> <span class="keyword">queue_handle_t</span>* handle)</span></span>;</span><br><span class="line"></span><br><span class="line"><span class="comment">// Regular context</span></span><br><span class="line"><span class="function"><span class="keyword">bool</span> <span class="title">Queue_push</span><span class="params">(<span class="keyword">queue_handle_t</span>* handle, <span class="keyword">int</span> data)</span></span>;</span><br><span class="line"><span class="function"><span class="keyword">bool</span> <span class="title">Queue_pop</span><span class="params">(<span class="keyword">queue_handle_t</span>* handle, <span class="keyword">int</span>* data)</span></span>;</span><br><span class="line"></span><br><span class="line"><span class="comment">// ISR Context</span></span><br><span class="line"><span class="function"><span class="keyword">bool</span> <span class="title">Queue_push_ISR</span><span class="params">(<span class="keyword">queue_handle_t</span>* handle, <span class="keyword">int</span> data)</span></span>;</span><br><span class="line"><span class="function"><span class="keyword">bool</span> <span class="title">Queue_pop_ISR</span><span class="params">(<span class="keyword">queue_handle_t</span>* handle, <span class="keyword">int</span>* data)</span></span>;</span><br></pre></td></tr></table></figure>
+
+<p>It has:</p>
+<ul>
+<li>2 functions that can be used anywhere</li>
+<li>2 functions that need the user to specify context</li>
+<li>2 functions that should not be called inside an ISR</li>
+</ul>
+<p>We have here all the issues described in the introduction.
+So let’s also have a toy example, to try and replicate for each technique:</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">queue_handle_t</span>* global_queue;</span><br><span class="line"></span><br><span class="line"><span class="comment">// In C, we need to initialize our handle somewhere.</span></span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">main</span><span class="params">()</span></span>&#123;</span><br><span class="line">    <span class="keyword">queue_handle_t</span> handle = Queue_create();</span><br><span class="line">    global_queue = &amp;handle;</span><br><span class="line">    <span class="comment">// Do stuff</span></span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">// An interrupt function</span></span><br><span class="line"><span class="comment">// (assume ISR as a macro for the attribute that makes this </span></span><br><span class="line"><span class="comment">//  an interrupt function in your platform)</span></span><br><span class="line"><span class="function">ISR <span class="keyword">void</span> <span class="title">isr</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    <span class="keyword">if</span>(Queue_empty(global_queue))</span><br><span class="line">        Queue_push(global_queue, <span class="number">1</span>);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">// A function to be called during regular context</span></span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">not_isr</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    <span class="keyword">if</span>(!Queue_full(global_queue))</span><br><span class="line">        Queue_push(global_queue, <span class="number">0</span>);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>A reader with a keen eye may have noticed we already forgot to call the correct push function inside an ISR.
+Other readers may have missed it, like I did, and like a code reviewer can. And <em>that’s</em> the problem with this type of interface.</p>
+<blockquote>
+<p>“Make interfaces easy to use correctly and hard to use incorrectly”</p>
+<p>— Scott Meyers</p>
+</blockquote>
+<p>The master has spoken, so let’s see what we can do!</p>
+<h2 id="c-raii-guards"><a name="c-raii-guards" href="#c-raii-guards" class="headerlink" title="Link to &quot;C++: RAII guards&quot;">🔗</a>C++: RAII guards</h2><p>The idea for this entire article started from this technique, which <a target="_blank" rel="noopener" href="https://twitter.com/_JoelFilho/status/1400075243667005443">I was experimenting earlier</a>, and had promising results. Even though it ended up not being great, it’s still cool to see what a compiler can do for us. So it’s a perfect first solution to build upon.</p>
+<p>Let’s start with how it looks like:</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// A shared instance of the queue</span></span><br><span class="line">MyQueue global_queue;</span><br><span class="line"></span><br><span class="line"><span class="comment">// Our interrupt function</span></span><br><span class="line"><span class="function">ISR <span class="keyword">void</span> <span class="title">isr</span><span class="params">()</span> <span class="keyword">noexcept</span> </span>&#123;</span><br><span class="line">    context::isr isr_context;</span><br><span class="line">    <span class="keyword">if</span>(global_queue.empty())</span><br><span class="line">        global_queue.push(<span class="number">1</span>);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">// Our function to be called during regular context</span></span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">not_isr</span><span class="params">()</span> <span class="keyword">noexcept</span> </span>&#123;</span><br><span class="line">    context::regular regular_context;</span><br><span class="line">    <span class="keyword">if</span>(!global_queue.full())</span><br><span class="line">        global_queue.push(<span class="number">0</span>);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">// Our push method</span></span><br><span class="line"><span class="function"><span class="keyword">bool</span> <span class="title">MyQueue::push</span><span class="params">(<span class="keyword">int</span> data)</span></span>&#123;</span><br><span class="line">    <span class="comment">// Check if it&#x27;s an ISR context, then call the correct function</span></span><br><span class="line">    <span class="keyword">if</span>(context::is_isr()) &#123;</span><br><span class="line">        <span class="keyword">return</span> Queue_push_ISR(&amp;handle, data);</span><br><span class="line">    &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">        <span class="keyword">return</span> Queue_push(&amp;handle, data);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>We presented a few constructs here:</p>
+<ul>
+<li><code>context::is_isr()</code> defines whether we’re inside an ISR</li>
+<li><code>context::isr</code> and <code>context::regular</code> RAII guards, that are not referenced anywhere else</li>
+</ul>
+<p>We can conclude there must be something hidden. And there is: a global boolean variable, which stores the magic behind the context detection logic.</p>
+<p>The context logic is fairly simple, and this would be the entire library component we’d need:</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">namespace</span> context &#123;</span><br><span class="line"></span><br><span class="line"><span class="keyword">namespace</span> detail &#123;</span><br><span class="line"><span class="comment">// The backbone of the entire operation: a global variable!</span></span><br><span class="line"><span class="comment">// Intentionally not volatile</span></span><br><span class="line"><span class="keyword">inline</span> <span class="keyword">bool</span> is_isr = <span class="literal">false</span>;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">// A function to &quot;hide&quot; our is_isr</span></span><br><span class="line"><span class="function"><span class="keyword">bool</span> <span class="title">is_isr</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    <span class="keyword">return</span> detail::is_isr;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">// A context RAII guard that sets is_isr to true, then returns to previous value</span></span><br><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">isr</span> &#123;</span></span><br><span class="line">    <span class="keyword">bool</span> old_isr;</span><br><span class="line">    isr() : old_isr&#123;detail::is_isr&#125; &#123; detail::is_isr = <span class="literal">true</span>; &#125;</span><br><span class="line">    ~isr() &#123; detail::is_isr = old_isr; &#125;</span><br><span class="line">&#125;;</span><br><span class="line"></span><br><span class="line"><span class="comment">// A context RAII guard that sets is_isr to false, then returns to previous value</span></span><br><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">regular</span> &#123;</span></span><br><span class="line">    <span class="keyword">bool</span> old_isr;</span><br><span class="line">    regular() : old_isr&#123;detail::is_isr&#125;  &#123; detail::is_isr = <span class="literal">false</span>; &#125;</span><br><span class="line">    ~regular() &#123; detail::is_isr = old_isr; &#125;</span><br><span class="line">&#125;;</span><br><span class="line"></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><strong>“But Joel, your titled said <em>compile time</em>, that’s runtime!”</strong> </p>
+<p>Indeed, it is. But if your compiler can guarantee all functions called within that context do not change <code>is_isr</code>, <strong>it can infer that constructing and destroying both <code>isr_context</code> and <code>regular_context</code> have no side-effects</strong>.
+And then, they’re optimized away¹. For instance, <a target="_blank" rel="noopener" href="https://godbolt.org/z/41drj9j1z">this simplified example</a> does everything we expected from it, outputting an assembly with zero overhead.</p>
+<p>¹ That’s the same reason why we need <code>volatile</code> or <code>atomic</code> for variables being used in both contexts. But here, we’re using it to our advantage!</p>
+<p><strong>Defining the rest of the Queue wrapper class</strong></p>
+<p>Our wrapper class’ interface is transparent to context:</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">class</span> <span class="title">MyQueue</span> &#123;</span></span><br><span class="line">    <span class="keyword">queue_handle_t</span> handle;</span><br><span class="line"><span class="keyword">public</span>:</span><br><span class="line">    MyQueue(); <span class="comment">// We call create here</span></span><br><span class="line">    ~MyQueue(); <span class="comment">// and destroy here</span></span><br><span class="line"></span><br><span class="line">    <span class="function"><span class="keyword">bool</span> <span class="title">push</span><span class="params">(<span class="keyword">int</span> data)</span></span>;</span><br><span class="line">    <span class="function"><span class="built_in">std</span>::optional&lt;<span class="keyword">int</span>&gt; <span class="title">pop</span><span class="params">()</span></span>;</span><br><span class="line">    <span class="function"><span class="keyword">bool</span> <span class="title">empty</span><span class="params">()</span> <span class="keyword">const</span></span>;</span><br><span class="line">    <span class="function"><span class="keyword">bool</span> <span class="title">full</span><span class="params">()</span> <span class="keyword">const</span></span>;</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+
+<p><em>Implementation of all other functions is left as an exercise to the reader</em>.</p>
+<p><strong>Pros</strong></p>
+<ul>
+<li>Easy to use</li>
+<li>Only define the context logic once, use everywhere</li>
+<li>Only instantiate once on the top-level function of the context, automatically detect inside the functions</li>
+<li>Zero overhead is achievable</li>
+</ul>
+<p><strong>Cons</strong></p>
+<ul>
+<li>Works without specifying any context (<em>easy to use incorrectly</em>!)</li>
+<li>No way to block, at compile time, calls to <code>Queue_create</code> and <code>Queue_delete</code> in the wrong context<ul>
+<li>At runtime, it would need exception throwing or <code>std::optional</code> factories. Not great, either way.</li>
+</ul>
+</li>
+<li><em>Very hard</em> to reach zero overhead, needing LTO or unity builds <sup>(<em>ew</em>)</sup>, or jumping through many hoops to make the compiler understand there are no side-effects.</li>
+</ul>
+<p><strong>Verdict</strong>: It’s a fun showing of the power of the compiler, but it’s too error-prone, and depends on very strong optimization techniques. We can do better, and we will.</p>
+<h2 id="c-context-wrapper-classes"><a name="c-context-wrapper-classes" href="#c-context-wrapper-classes" class="headerlink" title="Link to &quot;C++: Context wrapper classes&quot;">🔗</a>C++: Context wrapper classes</h2><p>This strategy is based on getting a handler from a specific context type.
+Our sample code:</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// A shared instance of the queue</span></span><br><span class="line">MyQueue global_queue;</span><br><span class="line"></span><br><span class="line"><span class="comment">// Our interrupt function</span></span><br><span class="line"><span class="function">ISR <span class="keyword">void</span> <span class="title">isr</span><span class="params">()</span> <span class="keyword">noexcept</span> </span>&#123;</span><br><span class="line">    <span class="keyword">auto</span> <span class="built_in">queue</span> = global_queue.isr_context();</span><br><span class="line">    <span class="keyword">if</span>(<span class="built_in">queue</span>.empty())</span><br><span class="line">        <span class="built_in">queue</span>.push(<span class="number">1</span>);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">// Our function to be called during regular context</span></span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">not_isr</span><span class="params">()</span> <span class="keyword">noexcept</span> </span>&#123;</span><br><span class="line">    <span class="keyword">auto</span> <span class="built_in">queue</span> = global_queue.regular_context();</span><br><span class="line">    <span class="keyword">if</span>(!<span class="built_in">queue</span>.full())</span><br><span class="line">        <span class="built_in">queue</span>.push(<span class="number">0</span>);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>What determines our context are the member functions <code>isr_context</code> and <code>regular_context</code>.
+We cannot call a function on <code>global_queue</code> without a context wrapper/handler, forcing the user to, at least, think of which context they want to use.</p>
+<p>The interface of this implementation is given by:</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">MyQueue</span> &#123;</span></span><br><span class="line"><span class="keyword">private</span>:</span><br><span class="line">    <span class="keyword">queue_handle_t</span> handle;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// We define the common interface, for ISR and regular contexts</span></span><br><span class="line">    <span class="comment">// The other interfaces will inherit from this, </span></span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">queue_common</span> &#123;</span></span><br><span class="line">    <span class="keyword">protected</span>:</span><br><span class="line">        <span class="comment">// We hold a non-owning reference back to the queue</span></span><br><span class="line">        MyQueue&amp; <span class="built_in">queue</span>;</span><br><span class="line">        <span class="comment">// We need to construct this, as it&#x27;s not an aggregate type</span></span><br><span class="line">        queue_common(MyQueue&amp; q) : <span class="built_in">queue</span>&#123;q&#125; &#123;&#125;</span><br><span class="line">        <span class="comment">// We guarantee nobody ever holds an instance of this, except derived classes</span></span><br><span class="line">        ~queue_common() = <span class="keyword">default</span>;</span><br><span class="line">    <span class="keyword">public</span>:</span><br><span class="line">        <span class="function"><span class="keyword">bool</span> <span class="title">empty</span><span class="params">()</span></span>;</span><br><span class="line">        <span class="function"><span class="keyword">bool</span> <span class="title">full</span><span class="params">()</span></span>;</span><br><span class="line">    &#125;;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// We implement the ISR interface</span></span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">queue_isr</span> :</span> queue_common &#123;</span><br><span class="line">        queue_isr(MyQueue&amp; q) : queue_common&#123;q&#125; &#123;&#125;</span><br><span class="line"></span><br><span class="line">        <span class="function"><span class="keyword">bool</span> <span class="title">push</span><span class="params">(<span class="keyword">int</span> data)</span></span>;</span><br><span class="line">        <span class="function"><span class="built_in">std</span>::optional&lt;<span class="keyword">int</span>&gt; <span class="title">pop</span><span class="params">()</span></span>;</span><br><span class="line">    &#125;;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// The Regular interface is the same, but can add stuff that ISR can&#x27;t invoke</span></span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">queue_regular</span> :</span> queue_common &#123;</span><br><span class="line">        queue_regular(MyQueue&amp; q) : queue_common&#123;q&#125; &#123;&#125;</span><br><span class="line"></span><br><span class="line">        <span class="function"><span class="keyword">bool</span> <span class="title">push</span><span class="params">(<span class="keyword">int</span> data)</span></span>;</span><br><span class="line">        <span class="function"><span class="built_in">std</span>::optional&lt;<span class="keyword">int</span>&gt; <span class="title">pop</span><span class="params">()</span></span>;</span><br><span class="line">        </span><br><span class="line">        <span class="comment">// This can allow calling Queue_delete outside the destructor</span></span><br><span class="line">        <span class="function"><span class="keyword">void</span> <span class="title">release</span><span class="params">()</span></span>;</span><br><span class="line">    &#125;;</span><br><span class="line"><span class="keyword">public</span>:</span><br><span class="line"></span><br><span class="line">    MyQueue();</span><br><span class="line">    ~MyQueue();</span><br><span class="line"></span><br><span class="line">    <span class="comment">// Where we make our interface public</span></span><br><span class="line">    <span class="function">queue_isr <span class="title">isr_context</span><span class="params">()</span></span>&#123;</span><br><span class="line">        <span class="keyword">return</span> &#123;*<span class="keyword">this</span>&#125;;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="function">queue_regular <span class="title">regular_context</span><span class="params">()</span></span>&#123;</span><br><span class="line">        <span class="keyword">return</span> &#123;*<span class="keyword">this</span>&#125;;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+
+<p><strong>Pros</strong></p>
+<ul>
+<li>Easy to use correctly</li>
+<li>Impossible to use without choosing a context, i.e. harder to use incorrectly</li>
+<li>Zero overhead (when inlined)</li>
+<li>We can define functions that only work in certain contexts</li>
+<li>We can share implementation between contexts</li>
+</ul>
+<p><strong>Cons</strong></p>
+<ul>
+<li>Verbose declaration</li>
+<li>We can’t invalidate the constructor’s call to <code>Queue_create</code> inside an ISR</li>
+<li>Strategy needs an object to operate over, i.e. does not allow declaring static functionality.</li>
+</ul>
+<p><strong>Verdict</strong>: It’s a viable way of implementing interfaces, but it needs some boilerplate for the definition. Declaration is not very clean, though we can improve readability by separating definition from declaration.</p>
+<h2 id="c-tagged-functions"><a name="c-tagged-functions" href="#c-tagged-functions" class="headerlink" title="Link to &quot;C++: Tagged functions&quot;">🔗</a>C++: Tagged functions</h2><p>For this technique, we need to call our functions with objects of different types, similar to how we’d use them for tag dispatching.
+We then have two different approaches:</p>
+<p><strong>1. Overload Set</strong>, which uses empty classes and passes an instance of them as arguments.</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">namespace</span> context&#123;</span><br><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">any</span> &#123;</span>&#125;;</span><br><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">isr</span> :</span> any &#123;&#125;;</span><br><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">regular</span> :</span> any &#123;&#125;;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="class"><span class="keyword">class</span> <span class="title">MyQueue</span> &#123;</span></span><br><span class="line">    <span class="keyword">queue_handle_t</span> handle;</span><br><span class="line"><span class="keyword">public</span>:</span><br><span class="line">    <span class="comment">// Used only on regular context</span></span><br><span class="line">    <span class="comment">// We make it explicit so people don&#x27;t call MyQueue(&#123;&#125;)</span></span><br><span class="line">    <span class="function"><span class="keyword">explicit</span> <span class="title">MyQueue</span><span class="params">(context::regular)</span></span>;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// We can&#x27;t limit this one</span></span><br><span class="line">    ~MyQueue();</span><br><span class="line"></span><br><span class="line">    <span class="comment">// Our context-dependent overload sets</span></span><br><span class="line">    <span class="function"><span class="keyword">bool</span> <span class="title">push</span><span class="params">(context::isr, <span class="keyword">int</span> data)</span></span>;</span><br><span class="line">    <span class="function"><span class="keyword">bool</span> <span class="title">push</span><span class="params">(context::regular, <span class="keyword">int</span> data)</span></span>;</span><br><span class="line"></span><br><span class="line">    <span class="function"><span class="built_in">std</span>::optional&lt;<span class="keyword">int</span>&gt; <span class="title">pop</span><span class="params">(context::isr)</span></span>;</span><br><span class="line">    <span class="function"><span class="built_in">std</span>::optional&lt;<span class="keyword">int</span>&gt; <span class="title">pop</span><span class="params">(context::regular)</span></span>;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// context::any utilized for consistent</span></span><br><span class="line">    <span class="comment">// May be declared without</span></span><br><span class="line">    <span class="function"><span class="keyword">bool</span> <span class="title">empty</span><span class="params">(context::any = &#123;&#125;)</span> <span class="keyword">const</span></span>;</span><br><span class="line">    <span class="function"><span class="keyword">bool</span> <span class="title">full</span><span class="params">(context::any = &#123;&#125;)</span> <span class="keyword">const</span></span>;</span><br><span class="line">&#125;;</span><br><span class="line"></span><br><span class="line"><span class="comment">// And our usage</span></span><br><span class="line"></span><br><span class="line"><span class="function">MyQueue <span class="title">global_queue</span><span class="params">(context::regular&#123;&#125;)</span></span>;</span><br><span class="line"></span><br><span class="line"><span class="function">ISR <span class="keyword">void</span> <span class="title">isr</span><span class="params">()</span> <span class="keyword">noexcept</span> </span>&#123;</span><br><span class="line">    context::isr context;</span><br><span class="line">    <span class="keyword">if</span>(global_queue.empty(context))</span><br><span class="line">        global_queue.push(context, <span class="number">1</span>);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">not_isr</span><span class="params">()</span> <span class="keyword">noexcept</span> </span>&#123;</span><br><span class="line">    context::regular context;</span><br><span class="line">    <span class="keyword">if</span>(!global_queue.full(context))</span><br><span class="line">        global_queue.push(context, <span class="number">0</span>);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>Notice we pass the tags as value, not as references. This slightly helps code generation in the case where the function is not inlined, as we don’t pass an address.</p>
+<p><strong>2. Template specializations</strong>, using a template parameter as the tag. The parameter can be a value, e.g. an <code>enum</code>:</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">enum</span> <span class="keyword">class</span> <span class="title">context</span> &#123;</span></span><br><span class="line">    any,</span><br><span class="line">    isr,</span><br><span class="line">    regular</span><br><span class="line">&#125;;</span><br><span class="line"></span><br><span class="line"><span class="class"><span class="keyword">class</span> <span class="title">MyQueue</span> &#123;</span></span><br><span class="line">    <span class="keyword">queue_handle_t</span> handle;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// Our constructor is now private</span></span><br><span class="line">    MyQueue();</span><br><span class="line"><span class="keyword">public</span>:</span><br><span class="line">    <span class="comment">// We cannot provide a constructor, but we can provide a tagged function</span></span><br><span class="line">    <span class="comment">// ... which calls the constructor</span></span><br><span class="line">    <span class="keyword">template</span>&lt;context&gt;</span><br><span class="line">    <span class="function"><span class="keyword">static</span> MyQueue <span class="title">create</span><span class="params">()</span> </span>= <span class="keyword">delete</span>;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// We still can&#x27;t limit this one</span></span><br><span class="line">    ~MyQueue();</span><br><span class="line"></span><br><span class="line">    <span class="comment">// We declare our functions here</span></span><br><span class="line">    <span class="keyword">template</span>&lt;context&gt;</span><br><span class="line">    <span class="function"><span class="keyword">bool</span> <span class="title">push</span><span class="params">(<span class="keyword">int</span> data)</span> </span>= <span class="keyword">delete</span>;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">template</span>&lt;context&gt;</span><br><span class="line">    <span class="function"><span class="built_in">std</span>::optional&lt;<span class="keyword">int</span>&gt; <span class="title">pop</span><span class="params">()</span> </span>= <span class="keyword">delete</span>;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// context::any utilized for consistency</span></span><br><span class="line">    <span class="comment">// Using a default argument means it can be called without one.</span></span><br><span class="line">    <span class="comment">// This kind of interface is optional.</span></span><br><span class="line">    <span class="keyword">template</span>&lt;context = context::any&gt;</span><br><span class="line">    <span class="keyword">bool</span> empty() <span class="keyword">const</span>;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">template</span>&lt;context = context::any&gt;</span><br><span class="line">    <span class="keyword">bool</span> full() <span class="keyword">const</span>;</span><br><span class="line">&#125;;</span><br><span class="line"></span><br><span class="line"><span class="comment">// Our template specializations are required to be declared outside the class</span></span><br><span class="line"></span><br><span class="line"><span class="keyword">template</span>&lt;&gt;</span><br><span class="line">MyQueue MyQueue::create&lt;context::regular&gt;();</span><br><span class="line"></span><br><span class="line"><span class="keyword">template</span>&lt;&gt;</span><br><span class="line"><span class="keyword">bool</span> MyQueue::push&lt;context::isr&gt;(<span class="keyword">int</span> data);</span><br><span class="line"></span><br><span class="line"><span class="keyword">template</span>&lt;&gt;</span><br><span class="line"><span class="keyword">bool</span> MyQueue::push&lt;context::regular&gt;(<span class="keyword">int</span> data);</span><br><span class="line"></span><br><span class="line"><span class="keyword">template</span>&lt;&gt;</span><br><span class="line"><span class="built_in">std</span>::optional&lt;<span class="keyword">int</span>&gt; MyQueue::pop&lt;context::isr&gt;();</span><br><span class="line"></span><br><span class="line"><span class="keyword">template</span>&lt;&gt;</span><br><span class="line"><span class="built_in">std</span>::optional&lt;<span class="keyword">int</span>&gt; MyQueue::pop&lt;context::regular&gt;();</span><br><span class="line"></span><br><span class="line"><span class="comment">// And our usage</span></span><br><span class="line"></span><br><span class="line">MyQueue global_queue = MyQueue::create&lt;context::regular&gt;();</span><br><span class="line"></span><br><span class="line"><span class="function">ISR <span class="keyword">void</span> <span class="title">isr</span><span class="params">()</span> <span class="keyword">noexcept</span> </span>&#123;</span><br><span class="line">    <span class="keyword">constexpr</span> <span class="keyword">auto</span> context = context::isr;</span><br><span class="line">    <span class="keyword">if</span>(global_queue.empty&lt;context&gt;())</span><br><span class="line">        global_queue.push&lt;context&gt;(<span class="number">1</span>);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">not_isr</span><span class="params">()</span> <span class="keyword">noexcept</span> </span>&#123;</span><br><span class="line">    <span class="keyword">constexpr</span> <span class="keyword">auto</span> context = context::regular;</span><br><span class="line">    <span class="keyword">if</span>(!global_queue.full&lt;context&gt;())</span><br><span class="line">        global_queue.push&lt;context&gt;(<span class="number">0</span>);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>Although more restrictive and verbose, this technique does not use a register for the tag argument, which may be relevant when not inlining these functions.
+In all other aspects, it’s either the same or worse than the previous solution.</p>
+<p><strong>Pros</strong></p>
+<ul>
+<li>A context-specific handle is always required to call functions</li>
+<li>We can constrain the construction to certain contexts</li>
+<li>Zero overhead (when the overload set is inlined, or when using the template alternative)</li>
+<li>No need for a <code>release</code> member function, as the object can only be constructed in a regular context</li>
+</ul>
+<p><strong>Cons</strong></p>
+<ul>
+<li>All calls must be individually tagged<ul>
+<li>Including the functions that do not depend on context, for interface consistency</li>
+</ul>
+</li>
+<li>Template version is verbose and does not allow calling the constructor with tags</li>
+</ul>
+<p><strong>Verdict</strong>: Both are practical ways of solving the problem, though the overload set solution is definitely cleaner.
+Having to tag each call makes the interface less clean than it needs to be, which may or may not be a good thing.</p>
+<p>(Thanks to <a target="_blank" rel="noopener" href="https://twitter.com/apmorton">Austin Morton</a> for introducing this technique to the discussion on the CppLang Slack)</p>
+<h2 id="c-namespaces"><a name="c-namespaces" href="#c-namespaces" class="headerlink" title="Link to &quot;C++: Namespaces&quot;">🔗</a>C++: Namespaces</h2><p>This technique is fairly straight-forward, as it’s very similar to our C code:</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br></pre></td><td class="code"><pre><span class="line">MyQueue global_queue;</span><br><span class="line"></span><br><span class="line"><span class="function">ISR <span class="keyword">void</span> <span class="title">isr</span><span class="params">()</span> <span class="keyword">noexcept</span> </span>&#123;</span><br><span class="line">    <span class="comment">// We import the functions from our interrupt context namespace</span></span><br><span class="line">    <span class="keyword">using</span> <span class="keyword">namespace</span> context::isr;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// We then use the correctly imported functions</span></span><br><span class="line">    <span class="keyword">if</span>(empty(global_queue))</span><br><span class="line">        push(global_queue, <span class="number">1</span>);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">not_isr</span><span class="params">()</span> <span class="keyword">noexcept</span> </span>&#123;</span><br><span class="line">    <span class="comment">// We import the functions from our regular context namespace</span></span><br><span class="line">    <span class="keyword">using</span> <span class="keyword">namespace</span> context::regular;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// Then use the correctly imported ones</span></span><br><span class="line">    <span class="keyword">if</span>(!full(global_queue))</span><br><span class="line">        push(global_queue, <span class="number">0</span>);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">main</span><span class="params">()</span></span>&#123;</span><br><span class="line">    <span class="keyword">using</span> <span class="keyword">namespace</span> context::regular;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// We need to manually initialize our queue</span></span><br><span class="line">    create(global_queue);</span><br><span class="line">    <span class="comment">// Do stuff, then destroy, manually</span></span><br><span class="line">    destroy(global_queue);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>And the declaration:</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// A dummy wrapper, for this application</span></span><br><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">MyQueue</span> &#123;</span></span><br><span class="line">    <span class="keyword">queue_handle_t</span> handle;</span><br><span class="line">&#125;;</span><br><span class="line"></span><br><span class="line"><span class="comment">// Common functions to all contexts, to be imported with the other contexts</span></span><br><span class="line"><span class="keyword">namespace</span> context::detail::common &#123;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">bool</span> <span class="title">empty</span><span class="params">(MyQueue&amp; <span class="built_in">queue</span>)</span></span>;</span><br><span class="line"><span class="function"><span class="keyword">bool</span> <span class="title">full</span><span class="params">(MyQueue&amp; <span class="built_in">queue</span>)</span></span>;</span><br><span class="line"></span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">// The ISR context</span></span><br><span class="line"></span><br><span class="line"><span class="keyword">namespace</span> context::isr &#123;</span><br><span class="line"></span><br><span class="line"><span class="comment">// We import our global functions</span></span><br><span class="line"><span class="keyword">using</span> <span class="keyword">namespace</span> context::detail::common;</span><br><span class="line"></span><br><span class="line"><span class="comment">// Our specific implementations</span></span><br><span class="line"><span class="function"><span class="keyword">bool</span> <span class="title">push</span><span class="params">(MyQueue&amp; <span class="built_in">queue</span>, <span class="keyword">int</span> data)</span></span>;</span><br><span class="line"><span class="function"><span class="built_in">std</span>::optional&lt;<span class="keyword">int</span>&gt; <span class="title">pop</span><span class="params">(MyQueue&amp; <span class="built_in">queue</span>)</span></span>;</span><br><span class="line"></span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">// The Regular context</span></span><br><span class="line"></span><br><span class="line"><span class="keyword">namespace</span> context::regular &#123;</span><br><span class="line"></span><br><span class="line"><span class="comment">// We import our global functions</span></span><br><span class="line"><span class="keyword">using</span> <span class="keyword">namespace</span> context::detail::common;</span><br><span class="line"></span><br><span class="line"><span class="comment">// Our specific implementations</span></span><br><span class="line"><span class="function"><span class="keyword">bool</span> <span class="title">push</span><span class="params">(MyQueue&amp; <span class="built_in">queue</span>, <span class="keyword">int</span> data)</span></span>;</span><br><span class="line"><span class="function"><span class="built_in">std</span>::optional&lt;<span class="keyword">int</span>&gt; <span class="title">pop</span><span class="params">(MyQueue&amp; <span class="built_in">queue</span>)</span></span>;</span><br><span class="line"></span><br><span class="line"><span class="comment">// Our functions only available in this context</span></span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">create</span><span class="params">(MyQueue&amp; <span class="built_in">queue</span>)</span></span>;</span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">destroy</span><span class="params">(MyQueue&amp; <span class="built_in">queue</span>)</span></span>;</span><br><span class="line"></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>As you may see, we’re basically doing what the original C interface does, but the name of the functions are defined by their namespaces instead of suffixes.
+The advantage this presents over the original C implementation is that we can just define <code>using namespace context::&lt;context&gt;;</code> inside our function,
+and never worry about which function is interrupt-safe or not, or which one requires a <code>FromISR</code> suffix.</p>
+<p><strong>Pros</strong></p>
+<ul>
+<li>Easy to use: define the context once per function, every call is done correctly</li>
+<li>Zero overhead (requires inlining only if a wrapper)</li>
+</ul>
+<p><strong>Cons</strong></p>
+<ul>
+<li>Can only use free functions (<a href="https://joelfilho.com/proposals/cpp_unified_function_call_syntax">we have no UFCS</a>, or extension methods)</li>
+<li>Our class is either an aggregate, or we require to jump through hoops to make our class constructible in an specific context. If we make the class an aggregate, we have the same complications for destruction.<ul>
+<li>These solutions are not idiomatic C++, and still resemble C APIs</li>
+</ul>
+</li>
+</ul>
+<p><strong>Verdict</strong>: Usable technique, though the complications of making it look like a C interface may be a turn-off for C++ programmers that prefer encapsulated interfaces.</p>
+<h2 id="c-tagged-macros"><a name="c-tagged-macros" href="#c-tagged-macros" class="headerlink" title="Link to &quot;C: Tagged Macros&quot;">🔗</a>C: Tagged Macros</h2><p>Well, I promised we can also do this in C. So, let’s see how! Starting from the usage:</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">typedef</span> <span class="class"><span class="keyword">struct</span> <span class="title">isr_context</span>&#123;</span>&#125; isr_context;</span><br><span class="line"><span class="keyword">typedef</span> <span class="class"><span class="keyword">struct</span> <span class="title">regular_context</span>&#123;</span>&#125; regular_context;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">main</span><span class="params">()</span></span>&#123;</span><br><span class="line">    regular_context context;</span><br><span class="line">    <span class="keyword">queue_handle_t</span> handle = Queue_create(context);</span><br><span class="line">    global_queue = &amp;handle;</span><br><span class="line">    <span class="comment">// And stuff...</span></span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function">ISR <span class="keyword">void</span> <span class="title">isr</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    isr_context context;</span><br><span class="line">    <span class="keyword">if</span>(Queue_empty(context, global_queue))</span><br><span class="line">        Queue_push(context, global_queue, <span class="number">1</span>);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">not_isr</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    regular_context context;</span><br><span class="line">    <span class="keyword">if</span>(!Queue_full(context, global_queue))</span><br><span class="line">        Queue_push(context, global_queue, <span class="number">0</span>);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>Pretty neat for C, huh? An overload set with the same name as the original function, just like the C++ solution!</p>
+<p><strong>How to implement this solution</strong></p>
+<p>The first thing we need to know to implement this is the <code>_Generic</code> selector from C11. It allows implementing overload sets using macros, e.g. the math functions in <code>&lt;tgmath.h&gt;</code>:</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">define</span> cbrt(X) _Generic((X),           \</span></span><br><span class="line">                    <span class="keyword">long</span> <span class="keyword">double</span>: cbrtl, \</span><br><span class="line">                    <span class="keyword">default</span>: cbrt,      \</span><br><span class="line">                    <span class="keyword">float</span>: cbrtf        \</span><br><span class="line">                )(X)</span><br></pre></td></tr></table></figure>
+
+<p>In this example, we dispatch, at compile time, the function that will be called, given the argument for our <code>cbrt</code> macro. (Example from the <a target="_blank" rel="noopener" href="https://en.cppreference.com/w/c/language/generic">Generic Selection page on cppreference.com</a>)</p>
+<p>One thing that we don’t usually consider with generic selection, though, is that argument passing is part of the macro, not the <code>_Generic</code> syntax! So we can just implement our functions like this:</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// Context-dependent dispatching</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> Queue_push(tag, handle, data)       \</span></span><br><span class="line">    _Generic((tag),                         \</span><br><span class="line">             isr_context: Queue_push_ISR,   \</span><br><span class="line">             regular_context: Queue_push    \</span><br><span class="line">    )(handle, data)</span><br><span class="line"></span><br><span class="line"><span class="comment">// Single-context function: fails compilation if in wrong context</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> Queue_create(tag)                   \</span></span><br><span class="line">    _Generic((tag),                         \</span><br><span class="line">             regular_context: Queue_create  \</span><br><span class="line">    )()</span><br><span class="line"></span><br><span class="line"><span class="comment">// Context-independent function: just an alias to the function</span></span><br><span class="line"><span class="comment">// Or, to force correctness, may use a redundant _Generic implementation</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> Queue_empty(tag, handle) Queue_empty(handle)</span></span><br></pre></td></tr></table></figure>
+
+<p>(As before, implementing the remaining functions should be trivial, and is left as an exercise)</p>
+<p><strong>Pros</strong></p>
+<ul>
+<li>Single function name, so it’s easy to use correctly and hard to use incorrectly</li>
+<li>Macros hide the original interface (Note: they <strong>need to be declared after the functions</strong>, and cannot exist before the definition)<ul>
+<li>Trying to call without a tag yields a compilation error, which is what we wanted!</li>
+</ul>
+</li>
+<li>Zero overhead, even without optimizations!</li>
+</ul>
+<p><strong>Cons</strong></p>
+<ul>
+<li>Available only on C11 or later</li>
+<li>Errors being behind preprocessor magic can make it hard to understand/debug for some users</li>
+<li>All calls must be individually tagged</li>
+</ul>
+<p><strong>Verdict</strong>: This technique is very similar to C++’s tagged functions, and has similar pros and cons. 
+But, since it’s in C, it’s one of the better interface improvements we can get, with a superior interface, when compared to the initial one.
+If C11 is available in your compiler, it may be a good choice to try it out.</p>
+<h2 id="c-tagged-macros-with-wrappers"><a name="c-tagged-macros-with-wrappers" href="#c-tagged-macros-with-wrappers" class="headerlink" title="Link to &quot;C: Tagged macros with wrappers&quot;">🔗</a>C: Tagged macros with wrappers</h2><p>The previous solution was a vast improvement on the interface for C. The question is: can we do better? I can’t assure we can, but we definitely can do differently:</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">typedef</span> <span class="class"><span class="keyword">struct</span> <span class="title">isr_context</span>&#123;</span> <span class="keyword">queue_handle_t</span>* handle; &#125; isr_context;</span><br><span class="line"><span class="keyword">typedef</span> <span class="class"><span class="keyword">struct</span> <span class="title">regular_context</span>&#123;</span> <span class="keyword">queue_handle_t</span>* handle; &#125; regular_context;</span><br><span class="line"></span><br><span class="line"><span class="keyword">queue_handle_t</span>* global_queue;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">main</span><span class="params">()</span></span>&#123;</span><br><span class="line">    regular_context context;</span><br><span class="line">    <span class="keyword">queue_handle_t</span> handle = Queue_create(context);</span><br><span class="line">    global_queue = &amp;handle;</span><br><span class="line">    <span class="comment">// Do stuff</span></span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function">ISR <span class="keyword">void</span> <span class="title">isr</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    isr_context <span class="built_in">queue</span> = &#123;global_queue&#125;;</span><br><span class="line">    <span class="keyword">if</span>(Queue_empty(<span class="built_in">queue</span>))</span><br><span class="line">        Queue_push(<span class="built_in">queue</span>, <span class="number">1</span>);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">not_isr</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    regular_context <span class="built_in">queue</span> = &#123;global_queue&#125;;</span><br><span class="line">    <span class="keyword">if</span>(!Queue_full(<span class="built_in">queue</span>))</span><br><span class="line">        Queue_push(<span class="built_in">queue</span>, <span class="number">0</span>);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>We now removed the need for a separate tag! We only need to specify it once, and use it normally.
+The definition is basically the same as the previous one, just changing the parameter passing:</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">define</span> Queue_push(tag, data)               \</span></span><br><span class="line">    _Generic((tag),                         \</span><br><span class="line">             isr_context: Queue_push_ISR,   \</span><br><span class="line">             regular_context: Queue_push    \</span><br><span class="line">    )(tag.handle, data)</span><br><span class="line"></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> Queue_create(tag)                   \</span></span><br><span class="line">    _Generic((tag),                         \</span><br><span class="line">             regular_context: Queue_create \</span><br><span class="line">    )()</span><br><span class="line"></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> Queue_empty(tag) Queue_empty(tag.handle)</span></span><br></pre></td></tr></table></figure>
+
+<p><strong>Pros</strong></p>
+<ul>
+<li>Easy to use: instantiate the wrapper once, use it in every function call</li>
+<li>Cannot use without a wrapper, i.e. hard to use incorrectly</li>
+<li>Zero overhead, in optimized builds. On unoptimized builds, it constructs a small struct holding a pointer.</li>
+</ul>
+<p><strong>Cons</strong></p>
+<ul>
+<li>The same macro magic and C11 availability issues from the previous solution</li>
+<li>Utilizing the tag type for both wrapping a handle or passing an empty context tag may be confusing<ul>
+<li>e.g. A user may ask “Is <code>Queue_create</code> supposed to return a handle, or to put the handle inside my context variable?”</li>
+</ul>
+</li>
+</ul>
+<p><strong>Verdict</strong>: This technique seems very similar to the C++ Namespaces solution, with a touch of the wrapper class technique.
+This technique is fairly clean, and the cons sound like nitpicking, when compared to the original interface.
+If I still wrote pure C interfaces, I’d choose this implementation.</p>
+<h2 id="conclusion"><a name="conclusion" href="#conclusion" class="headerlink" title="Link to &quot;Conclusion&quot;">🔗</a>Conclusion</h2><p>We saw a few techniques for solving an embedded systems development problem: <strong>how to make a context-dependent API more fool-proof</strong>?</p>
+<p>We cannot make any of these interfaces impossible to use incorrectly, but instantiating the wrong context makes it much easier to detect a mistake.</p>
+<p>About which solution is the best, there is none. Most of the techniques presented are viable choices for their respective languages. <sup>(RAII guards can burn in hell)</sup></p>
+<p>At the end, it’s a tradeoff, mostly based on complexity of implementation and how clean is the interface.
+Sometimes, it’s better to just follow the KISS principle and choose the simplest one. Some other times, it’s better to try a more robust approach to give a more readable interface to the user. As I’ve said, it’s a tradeoff.</p>
+<p>And, if there is a tradeoff, there is space for a comparison table!</p>
+<table>
+<thead>
+<tr>
+<th align="left">Feature</th>
+<th align="center">RAII guard</th>
+<th align="center">Wrapper class</th>
+<th align="center">Tagged overload set</th>
+<th align="center">Tagged template</th>
+<th align="center">Namespaces</th>
+<th align="center">_Generic macro</th>
+<th align="center"><code>_Generic</code> wrapper</th>
+</tr>
+</thead>
+<tbody><tr>
+<td align="left">Forces a choice in each context</td>
+<td align="center">❌</td>
+<td align="center">✔️</td>
+<td align="center">✔️*</td>
+<td align="center">✔️*</td>
+<td align="center">✔️</td>
+<td align="center">✔️*</td>
+<td align="center">✔️</td>
+</tr>
+<tr>
+<td align="left">Prevents circumvention</td>
+<td align="center">❔</td>
+<td align="center">✔️</td>
+<td align="center">✔️*</td>
+<td align="center">✔️*</td>
+<td align="center">✔️*</td>
+<td align="center">✔️*</td>
+<td align="center">✔️</td>
+</tr>
+<tr>
+<td align="left">Usage with free functions</td>
+<td align="center">✔️</td>
+<td align="center">✔️¹</td>
+<td align="center">✔️</td>
+<td align="center">✔️</td>
+<td align="center">✔️</td>
+<td align="center">✔️</td>
+<td align="center">✔️</td>
+</tr>
+<tr>
+<td align="left">Usage with member functions</td>
+<td align="center">✔️</td>
+<td align="center">✔️</td>
+<td align="center">✔️</td>
+<td align="center">✔️</td>
+<td align="center">❌</td>
+<td align="center">DNA</td>
+<td align="center">DNA</td>
+</tr>
+<tr>
+<td align="left">Removes repetition from calls</td>
+<td align="center">✔️</td>
+<td align="center">✔️</td>
+<td align="center">❌</td>
+<td align="center">❌</td>
+<td align="center">✔️</td>
+<td align="center">❌</td>
+<td align="center">✔️</td>
+</tr>
+<tr>
+<td align="left">No additional symbols generated</td>
+<td align="center">❌</td>
+<td align="center">➖</td>
+<td align="center">➖</td>
+<td align="center">➖</td>
+<td align="center">➖/✔️²</td>
+<td align="center">✔️</td>
+<td align="center">➖</td>
+</tr>
+<tr>
+<td align="left">Can limit construction scope</td>
+<td align="center">✔️³</td>
+<td align="center">❌</td>
+<td align="center">✔️</td>
+<td align="center">⁉</td>
+<td align="center">⁉</td>
+<td align="center">DNA</td>
+<td align="center">DNA</td>
+</tr>
+<tr>
+<td align="left">Runtime overhead removal</td>
+<td align="center">complex</td>
+<td align="center">trivial</td>
+<td align="center">trivial</td>
+<td align="center">trivial</td>
+<td align="center">trivial/nonexistent**</td>
+<td align="center">nonexistent</td>
+<td align="center">trivial</td>
+</tr>
+</tbody></table>
+<p><strong>Legend</strong>:</p>
+<ul>
+<li>✔️ means the feature is present</li>
+<li>❌ means the feature is not present</li>
+<li>➖ means the compiler needs to completely inline the functions to remove the overhead<ul>
+<li>Which shouldn’t be a problem in most cases. Always compile with optimizations on, even on debug mode! (<a target="_blank" rel="noopener" href="https://godbolt.org/z/hno3v7eeK">GCC’s <code>-Og</code> is a thing</a>)</li>
+</ul>
+</li>
+<li>* means that handles need to be encapsulated, in order to prevent the user from calling a function directly</li>
+<li>❔ means… it’s complicated. We can force the use of our syntax, but it’s too error-prone</li>
+<li>Runtime overhead removal, i.e. how much does the compiler need to know to <ul>
+<li>complex: the compiler needs a lot of information to entirely remove overhead, and may require link-time optimization (LTO)</li>
+<li>trivial: simply inlining the function removes all runtime overhead that would occur</li>
+<li>nonexistent: when the decision is made by a macro, the compiled code is no different than manually putting the correct code</li>
+</ul>
+</li>
+<li>¹ With hidden friends</li>
+<li>² There’s only overhead (without optimizations) if we’re wrapping other functions.</li>
+<li>³ At runtime, with exceptions (not recommended)</li>
+<li>⁉ means we need to use non-idiomatic ways of constructing (and/or destructing) the classes</li>
+<li>DNA (Does Not Apply): C does not have member functions, constructors and destructors</li>
+</ul>
+<p>In order to not overcomplicate this article, I’ve intentionally left out some other issues, like qualifiers and <code>noexcept</code> correctness, combination of some of these techniques, or problems we’d get by taking function addresses or interfacing with a function-like macro.</p>
+<p>If you reached this far, thank you for reading! If I’m wrong, I’ll be glad to learn something new from it! You can find me <a target="_blank" rel="noopener" href="https://twitter.com/_JoelFilho">on twitter</a>, on the CppLang Slack, and you can also <a target="_blank" rel="noopener" href="https://github.com/JoelFilho/JoelFilho.github.io/issues/new">open an issue on this blog’s repository</a>!</p>
+
+      
+    </div>
+    <footer class="article-footer">
+      <a data-url="https://joelfilho.com/blog/2021/interrupt_guards_c_cpp/" data-id="ckqggpazu00008kfh0qx01aof" data-title="ISR Contexts in Embedded C and C++ — Selecting the correct function at compile time" class="article-share-link">Share</a>
+      
+      
+      
+  <ul class="article-tag-list" itemprop="keywords"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/c/" rel="tag">c</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/c/" rel="tag">c++</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/compile-time/" rel="tag">compile-time</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/embedded/" rel="tag">embedded</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/experiments/" rel="tag">experiments</a></li></ul>
+
+    </footer>
+  </div>
+  
+    
+<nav id="article-nav">
+  
+  
+    <a href="/blog/2021/emulating_crtp_with_cpp_concepts/" id="article-nav-older" class="article-nav-link-wrap">
+      <strong class="article-nav-caption">Older</strong>
+      <div class="article-nav-title">Using C++20&#39;s concepts as a CRTP alternative: a viable replacement?</div>
+    </a>
+  
+</nav>
+
+  
+</article>
+
+
+</section>
+        
+          <aside id="sidebar">
+  
+    
+  <div class="widget-wrap">
+    <h3 class="widget-title">Tags</h3>
+    <div class="widget">
+      <ul class="tag-list" itemprop="keywords"><li class="tag-list-item"><a class="tag-list-link" href="/tags/c/" rel="tag">c</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/c/" rel="tag">c++</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/compile-time/" rel="tag">compile-time</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/concepts/" rel="tag">concepts</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/embedded/" rel="tag">embedded</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/experiments/" rel="tag">experiments</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/language-evolution/" rel="tag">language-evolution</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/language-tips/" rel="tag">language-tips</a></li></ul>
+    </div>
+  </div>
+
+
+  
+    
+  <div class="widget-wrap">
+    <h3 class="widget-title">Recent Posts</h3>
+    <div class="widget">
+      <ul>
+        
+          <li>
+            <a href="/blog/2021/interrupt_guards_c_cpp/">ISR Contexts in Embedded C and C++ — Selecting the correct function at compile time</a>
+          </li>
+        
+          <li>
+            <a href="/blog/2021/emulating_crtp_with_cpp_concepts/">Using C++20&#39;s concepts as a CRTP alternative: a viable replacement?</a>
+          </li>
+        
+          <li>
+            <a href="/blog/2020/compile_time_lookup_tables_in_cpp/">The evolution of constexpr: compile-time lookup tables in C++</a>
+          </li>
+        
+          <li>
+            <a href="/blog/2020/forwarding_references/">Forwarding References? Forwardable References! (or: don&#39;t use std::forward just because you can)</a>
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+
+  
+</aside>
+        
+      </div>
+      <footer id="footer">
+  
+  <div class="outer">
+    <div id="footer-info" class="inner">
+      
+      &copy; 2021 Joel Filho<br>
+      Powered by <a href="https://hexo.io/" target="_blank">Hexo</a>
+    </div>
+  </div>
+</footer>
+
+    </div>
+    <nav id="mobile-nav">
+  
+    <a href="/" class="mobile-nav-link">Home</a>
+  
+    <a href="/archives" class="mobile-nav-link">Archives</a>
+  
+    <a target="_blank" rel="noopener" href="https://twitter.com/_JoelFilho" class="mobile-nav-link">Twitter</a>
+  
+    <a target="_blank" rel="noopener" href="https://github.com/JoelFilho" class="mobile-nav-link">GitHub</a>
+  
+</nav>
+    
+
+
+<script src="/js/jquery-3.4.1.min.js"></script>
+
+
+
+  
+<script src="/fancybox/jquery.fancybox.min.js"></script>
+
+
+
+
+<script src="/js/script.js"></script>
+
+
+
+
+
+  </div>
+</body>
+</html>

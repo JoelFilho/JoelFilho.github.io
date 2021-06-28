@@ -6,7 +6,7 @@
   <link href="https://joelfilho.com/atom.xml" rel="self"/>
   
   <link href="https://joelfilho.com/"/>
-  <updated>2021-06-14T10:40:00.000Z</updated>
+  <updated>2021-06-28T10:40:00.000Z</updated>
   <id>https://joelfilho.com/</id>
   
   <author>
@@ -15,6 +15,55 @@
   </author>
   
   <generator uri="https://hexo.io/">Hexo</generator>
+  
+  <entry>
+    <title>ISR Contexts in Embedded C and C++ — Selecting the correct function at compile time</title>
+    <link href="https://joelfilho.com/blog/2021/interrupt_guards_c_cpp/"/>
+    <id>https://joelfilho.com/blog/2021/interrupt_guards_c_cpp/</id>
+    <published>2021-06-28T10:40:00.000Z</published>
+    <updated>2021-06-28T10:40:00.000Z</updated>
+    
+    
+    <summary type="html">&lt;p&gt;Interrupt handling is an important part of embedded systems development: 
+it allows separating application logic from peripheral interfacing, while removing the need for polling and allowing real-time operations of peripherals.&lt;/p&gt;
+&lt;p&gt;With interrupt handling in mind, the library may add functionality that requires different implementation while inside an interrupt context.
+Alternatively, a library function may require checks and calls when running outside an interrupt.&lt;/p&gt;
+&lt;p&gt;The rule of thumb for interrupt handling is &lt;em&gt;the faster, the better&lt;/em&gt;. &lt;strong&gt;This usually rules out automatic context detection at runtime&lt;/strong&gt;.
+So, library writers generate two versions of the same function, optimizing for the context where they’re executed.&lt;/p&gt;
+&lt;p&gt;One example of an API that extensively uses of this technique is &lt;a href=&quot;https://www.freertos.org/a00106.html&quot;&gt;FreeRTOS’s API&lt;/a&gt;. 
+We can take its Timer API as an example, which provides many pairs of these functions:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;xTimerStart&lt;/code&gt; / &lt;code&gt;xTimerStartFromISR&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;xTimerStop&lt;/code&gt; / &lt;code&gt;xTimerStopFromISR&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;xTimerChangePeriod&lt;/code&gt; / &lt;code&gt;xTimerChangePeriodFromISR&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;xTimerReset&lt;/code&gt; / &lt;code&gt;xTimerResetFromISR&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;xTimerPendFunctionCall&lt;/code&gt; / &lt;code&gt;xTimerPendFunctionCallFromISR&lt;/code&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;But this approach has some issues:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;A user depends on an IDE or documentation to know if a &lt;code&gt;FromISR&lt;/code&gt; function even exists&lt;/li&gt;
+&lt;li&gt;If a free function does not have the &lt;code&gt;FromISR&lt;/code&gt; suffix, does it mean it’s interrupt-safe or not?&lt;ul&gt;
+&lt;li&gt;Do we really expect a programmer to access documentation to verify if a call is valid in a specific context?&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;It’s 2021, we can do better than that. In this article, we’ll explore &lt;em&gt;4 ways&lt;/em&gt; of improving an interface like that with C++.&lt;/p&gt;
+&lt;p&gt;&lt;strong&gt;But wait, there’s more&lt;/strong&gt;: for those who won’t/can’t use C++, we’ll also see 2 ways of doing this with C!&lt;/p&gt;</summary>
+    
+    
+    
+    
+    <category term="c++" scheme="https://joelfilho.com/tags/c/"/>
+    
+    <category term="compile-time" scheme="https://joelfilho.com/tags/compile-time/"/>
+    
+    <category term="experiments" scheme="https://joelfilho.com/tags/experiments/"/>
+    
+    <category term="embedded" scheme="https://joelfilho.com/tags/embedded/"/>
+    
+    <category term="c" scheme="https://joelfilho.com/tags/c/"/>
+    
+  </entry>
   
   <entry>
     <title>Using C++20&#39;s concepts as a CRTP alternative: a viable replacement?</title>
